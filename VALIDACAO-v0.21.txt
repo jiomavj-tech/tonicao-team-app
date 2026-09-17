@@ -1,0 +1,34 @@
+Tonicão Team v0.21 — validação realizada
+
+1) JavaScript
+- node --check: app.js, db.js, sync.js, auth.js, remote-sync.js, remote-auth.js, google-auth.js, notifications-client.js, sw.js, permissions.js, test.js
+- Resultado: sem erro de sintaxe.
+
+2) Teste de permissões JavaScript
+- Comando: node test.js
+- Resultado: TODOS OS TESTES PASSARAM.
+- Cobertura: check-in com código errado/correto, tentativa de adulterar pontos/ficha/usuários, dados de outro aluno, filtro de código de aula, privateNote, rotas por papel.
+
+3) Teste de permissões Python
+- Comando: cd server && python test_permissions.py
+- Resultado: TODOS OS TESTES PYTHON PASSARAM.
+- Confirma paridade das regras usadas pelo servidor Python.
+
+4) Teste HTTP real do servidor
+- Servidor iniciado localmente com SQLite temporário.
+- Bootstrap de Administrador/Dono: OK.
+- Criação/login de Professor: OK.
+- Professor sincroniza aluno, regra de pontuação e aula: OK.
+- Admin impedido de usar rota acadêmica /api/registration/requests: OK.
+- Conta Aluno só pode ser vinculada a ficha existente: OK.
+- Pull do Aluno não recebe código da aula: OK.
+- Check-in com código errado: recusado.
+- Check-in correto: aceito.
+- Tentativa do Aluno de definir points=9999: recusada.
+- Tentativa do Aluno de gravar pointsLedger: recusada.
+- Pontuação oficial calculada pelo servidor: OK.
+- Retry do mesmo check-in não duplica a pontuação: OK.
+- Aluno bloqueado de rotas de usuários/pré-cadastros: OK.
+- Último Administrador/Dono não pode ser removido/rebaixado: OK.
+
+Observação: Web Push depende de VAPID/pywebpush e Google Sign-In depende de Client ID e acesso externo; esses provedores não foram exercitados neste teste local.

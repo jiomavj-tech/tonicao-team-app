@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111111">
+  <title>Tonicão Team Sul da Ilha</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <div id="authGate" class="auth-gate">
+    <div class="auth-card">
+      <img src="./assets/logo-tonicao.jpg" alt="Logo" class="auth-logo">
+      <div id="authGateContent"></div>
+    </div>
+  </div>
+  <div id="academyBlockGate" class="academy-block-gate">
+    <div class="academy-block-card" id="academyBlockContent"></div>
+  </div>
+  <div class="toast" id="toast"></div>
+  <div class="app-shell">
+    <header class="topbar">
+      <button id="globalBackBtn" class="top-back" onclick="appBack()" aria-label="Voltar" title="Voltar">←</button>
+      <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
+      <div class="brand">
+        <h1>Tonicão Team Sul da Ilha</h1>
+        <p id="topSubtitle">Piloto offline-first • v0.21</p>
+      </div>
+      <div class="spacer"></div>
+      <select id="roleSelect" class="role-toggle" aria-label="Perfil" style="display:none">
+        <option value="professor">Professor</option>
+        <option value="aluno">Aluno</option>
+      </select>
+    </header>
+
+    <main>
+      <section id="home" class="page active"></section>
+      <section id="checkin" class="page"></section>
+      <section id="students" class="page"></section>
+      <section id="graduation" class="page"></section>
+      <section id="more" class="page"></section>
+    </main>
+  </div>
+
+  <nav class="nav">
+    <button data-page="home" class="active"><span class="nav-ico">⌂</span>Início</button>
+    <button data-page="checkin"><span class="nav-ico">✓</span>Check-in</button>
+    <button data-page="students"><span class="nav-ico">👥</span>Alunos</button>
+    <button data-page="graduation"><span class="nav-ico">🥋</span>Graduação</button>
+    <button data-page="more"><span class="nav-ico">☰</span>Mais</button>
+  </nav>
+
+  <div id="modal" class="modal-backdrop">
+    <div class="modal" id="modalContent"></div>
+  </div>
+
+  <script src="./vendor/qrcode-bundle.js"></script>
+  <script src="./db.js"></script>
+  <script src="./sync.js"></script>
+  <script src="./auth.js"></script>
+  <script src="./remote-sync.js"></script>
+  <script src="./remote-auth.js"></script>
+  <script src="./google-auth.js"></script>
+  <script src="./notifications-client.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
