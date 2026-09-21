@@ -1,3 +1,14 @@
+const APP_CONFIG=window.TONICAO_APP_CONFIG||{};
+const APP_MODE=APP_CONFIG.mode==="demo"?"demo":"production";
+function localISODate(d=new Date()){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0");return `${y}-${m}-${day}`}
+function officialApiBase(){
+  const raw=String(APP_CONFIG.apiBase||"").trim().replace(/\/+$/,"");
+  if(!raw)return "";
+  try{const u=new URL(raw);if(u.protocol!=="https:"&&!(["localhost","127.0.0.1"].includes(u.hostname)&&u.protocol==="http:"))return "";
+    const allowed=Array.isArray(APP_CONFIG.allowedApiHosts)?APP_CONFIG.allowedApiHosts.filter(Boolean):[];
+    if(allowed.length&&!allowed.includes(u.hostname))return "";return u.origin+(u.pathname==="/"?"":u.pathname.replace(/\/+$/,"") )
+  }catch(e){return ""}
+}
 const EXAM_BLUE = [
   "4 Quedas com os respectivos nomes","1 Postura e abertura de Guarda","3 Raspagens partindo da Guarda fechada",
   "1 Imobilização no 100Kg e 1 saída","1 Imobilização no Norte / Sul e 1 saída","1 Ataque de Kimura partindo do 100 Kg",
@@ -109,7 +120,7 @@ const seed={
 
 let qrStream=null, qrTimer=null, cropState={studentId:null,img:null,zoom:1,x:0,y:0};
 function uid(prefix="id"){return prefix+"-"+Date.now()+"-"+Math.random().toString(36).slice(2,7)}
-function todayISO(){return new Date().toISOString().slice(0,10)}
+function todayISO(){return localISODate()}
 function monthKey(){return todayISO().slice(0,7)}
 function fmtDate(iso){if(!iso)return"";return new Date(iso+"T12:00:00").toLocaleDateString("pt-BR")}
 async function guard(perm){try{await TonicaoAuth.requirePerm(perm);return true}catch(e){toast(e.message||"Sem permissão.");return false}}
@@ -150,17 +161,34 @@ function showModal(html){
 document.getElementById("modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal()});
 
 async function ensureSeed(){
-  if(!(await DB.getAll("students")).length) for(const x of seed.students) await DB.rawPut("students",x);
+  // Em produção nunca criamos alunos, presenças, lembretes ou eventos fictícios.
+  if(APP_MODE==="demo"){
+    if(!(await DB.getAll("students")).length) for(const x of seed.students) await DB.rawPut("students",x);
+    if(!(await DB.getAll("gradingReminders")).length) for(const x of seed.gradingReminders) await DB.rawPut("gradingReminders",x);
+    if(!(await DB.getAll("techniques")).length) for(const x of seed.techniques) await DB.rawPut("techniques",x);
+    if(!(await DB.getAll("events")).length) for(const x of seed.events) await DB.rawPut("events",x);
+  }
   const existingPlans=await DB.getAll("gradingPlans");
   for(const x of seed.gradingPlans){
     const current=existingPlans.find(p=>p.id===x.id);
     if(!current) await DB.rawPut("gradingPlans",x);
     else await DB.rawPut("gradingPlans",{...x,...current,pdfAssetUrl:current.pdfAssetUrl||x.pdfAssetUrl,links:current.links||x.links||{},active:current.active!==false});
   }
-  if(!(await DB.getAll("gradingReminders")).length) for(const x of seed.gradingReminders) await DB.rawPut("gradingReminders",x);
-  if(!(await DB.getAll("techniques")).length) for(const x of seed.techniques) await DB.rawPut("techniques",x);
-  if(!(await DB.getAll("events")).length) for(const x of seed.events) await DB.rawPut("events",x);
-  let set=await DB.getOne("settings","app"); if(!set) set={id:"app",role:"professor",academy:"Tonicão Team",unit:"Sul da Ilha"}; await DB.rawPut("settings",set);
+  let set=await DB.getOne("settings","app");
+  if(!set)set={id:"app",role:"professor",academy:"Tonicão Team",unit:"Sul da Ilha"};
+  if(!set.academyId)set.academyId=APP_CONFIG.academyId||"tonicao-sul-ilha";
+  if(!set.publicAppUrl&&APP_CONFIG.publicAppUrl)set.publicAppUrl=APP_CONFIG.publicAppUrl;
+  await DB.rawPut("settings",set);
+}
+async function ensureProductionCleanV22(){
+  if(APP_MODE!=="production")return;
+  const s=await getSettings();if(s.productionCleanV22)return;
+  for(const id of ["s1","s2","s3","s4"])await DB.rawDelete("students",id);
+  for(const id of ["gr1"])await DB.rawDelete("gradingReminders",id);
+  for(const id of ["ev-demo-1"])await DB.rawDelete("events",id);
+  for(const id of ["t1","t2"])await DB.rawDelete("techniques",id);
+  for(const pid of ["gp-blue-2026"]){const p=await DB.getOne("gradingPlans",pid);if(p&&p.links){p.links={};await DB.rawPut("gradingPlans",p)}}
+  s.productionCleanV22=true;await DB.rawPut("settings",s);
 }
 
 async function ensureDefaultV05Data(){
@@ -355,8 +383,7 @@ async function buildCompletionLink(request){
   if(!base)return "";
   const q=new URLSearchParams();
   q.set("complete",request.inviteToken);
-  q.set("academy",settings.academyId||"tonicao-sul-ilha");
-  if(settings.cloudEndpoint)q.set("server",settings.cloudEndpoint);
+  q.set("academy",settings.academyId||APP_CONFIG.academyId||"tonicao-sul-ilha");
   return `${base}${base.includes("?")?"&":"?"}${q.toString()}`
 }
 async function inviteMessageForRequest(request){
@@ -386,7 +413,7 @@ async function shareSelfRegistrationLink(){
   await navigator.clipboard?.writeText(link);toast("Link de auto-cadastro copiado.")
 }
 
-function inviteServerFromUrl(){return new URLSearchParams(location.search).get("server")||""}
+function inviteServerFromUrl(){return officialApiBase()}
 async function findInviteByToken(token){
   const local=(await DB.getAll("registrationRequests")).find(r=>r.inviteToken===token);
   if(local)return local;
@@ -410,7 +437,7 @@ async function renderStudentCompletionGate(token){
   gate.classList.add("show");document.body.classList.add("auth-locked");
   const r=await findInviteByToken(token);
   if(!r){
-    host.innerHTML=`<h2>Convite de cadastro</h2><div class="notice payment"><strong>Convite não encontrado</strong><div class="small">Se este link foi aberto em outro aparelho, confirme se o servidor da academia está online e se o link está completo.</div></div>`;
+    host.innerHTML=`<h2>Convite de cadastro</h2><div class="notice payment"><strong>Convite indisponível</strong><div class="small">O convite pode ter vencido, já ter sido usado ou o servidor oficial ainda não estar configurado.</div></div>`;
     return false
   }
   if(r.status==="approved"){
@@ -484,7 +511,7 @@ async function refreshCompletionStatus(token){
   await renderStudentCompletionGate(token)
 }
 function clearCompletionLink(){
-  const u=new URL(location.href);u.searchParams.delete("complete");u.searchParams.delete("server");u.searchParams.delete("academy");history.replaceState(null,"",u.pathname+(u.search||"")+u.hash);location.reload()
+  const u=new URL(location.href);u.searchParams.delete("complete");u.searchParams.delete("academy");history.replaceState(null,"",u.pathname+(u.search||"")+u.hash);location.reload()
 }
 
 async function studentSelfRegistrationModal(){
@@ -1992,7 +2019,7 @@ async function newUserModal(){
   showModal(`<h3>Novo usuário</h3>
     <div class="field"><label>Nome</label><input id="usrName"></div>
     <div class="field"><label>Usuário</label><input id="usrUsername" autocomplete="off"></div>
-    <div class="field"><label>Senha/PIN</label><input id="usrPass" type="password" autocomplete="new-password"></div>
+    <div class="field"><label>Senha</label><input id="usrPass" type="password" autocomplete="new-password"></div>
     <div class="field"><label>Perfil</label><select id="usrRole" onchange="toggleStudentUserField()">${options}</select></div>
     <div class="field" id="usrStudentWrap" style="${me.role==="professor"?"":"display:none"}"><label>Aluno vinculado</label><select id="usrStudent"><option value="">Selecione</option>${students.map(s=>`<option value="${s.id}">${s.name}</option>`).join("")}</select></div>
     <button class="btn primary full" onclick="saveNewUser()">Criar usuário</button>`);
@@ -2293,7 +2320,7 @@ async function approveGoogleRegistration(userId){
 
 async function newRemoteUserModal(){
   const students=await getStudents();
-  showModal(`<h3>Novo usuário remoto</h3><div class="field"><label>Nome</label><input id="ruName"></div><div class="field"><label>Usuário</label><input id="ruUsername"></div><div class="field"><label>Senha/PIN</label><input id="ruPassword" type="password"></div><div class="field"><label>Perfil</label><select id="ruRole" onchange="toggleRemoteStudentField()"><option value="professor">Professor</option><option value="aluno">Aluno</option><option value="admin">Administrador</option></select></div><div class="field" id="ruStudentWrap" style="display:none"><label>Ficha do aluno</label><select id="ruStudent"><option value="">Selecione</option>${students.map(s=>`<option value="${s.id}">${s.name}</option>`).join("")}</select></div><button class="btn primary full" onclick="saveNewRemoteUser()">Criar no servidor</button>`);
+  showModal(`<h3>Novo usuário remoto</h3><div class="field"><label>Nome</label><input id="ruName"></div><div class="field"><label>Usuário</label><input id="ruUsername"></div><div class="field"><label>Senha</label><input id="ruPassword" type="password"></div><div class="field"><label>Perfil</label><select id="ruRole" onchange="toggleRemoteStudentField()"><option value="professor">Professor</option><option value="aluno">Aluno</option><option value="admin">Administrador</option></select></div><div class="field" id="ruStudentWrap" style="display:none"><label>Ficha do aluno</label><select id="ruStudent"><option value="">Selecione</option>${students.map(s=>`<option value="${s.id}">${s.name}</option>`).join("")}</select></div><button class="btn primary full" onclick="saveNewRemoteUser()">Criar no servidor</button>`);
 }
 function toggleRemoteStudentField(){const role=document.getElementById("ruRole")?.value;const wrap=document.getElementById("ruStudentWrap");if(wrap)wrap.style.display=role==="aluno"?"block":"none";}
 async function saveNewRemoteUser(){try{const role=document.getElementById("ruRole").value;const studentId=document.getElementById("ruStudent")?.value||"";if(role==="aluno"&&!studentId)throw new Error("Selecione a ficha do aluno.");await TonicaoRemoteAuth.createRemoteUser({name:document.getElementById("ruName").value.trim(),username:document.getElementById("ruUsername").value.trim(),password:document.getElementById("ruPassword").value,role,studentId});closeModal();toast("Usuário remoto criado.");renderRemoteGoogleUsers();}catch(e){toast(e.message||"Falha ao criar usuário remoto.");}}
@@ -2330,7 +2357,13 @@ document.querySelectorAll(".nav button").forEach(btn=>btn.addEventListener("clic
 
 async function renderAuthGate(){
   const completionToken=new URLSearchParams(location.search).get("complete");
-  if(completionToken)return await renderStudentCompletionGate(completionToken);
+  if(completionToken){
+    if(!officialApiBase()&&!((await DB.getAll("registrationRequests")).some(r=>r.inviteToken===completionToken))){
+      const gate=document.getElementById("authGate"),host=document.getElementById("authGateContent");gate.classList.add("show");document.body.classList.add("auth-locked");
+      host.innerHTML=`<h2>Servidor ainda não configurado</h2><div class="notice payment"><strong>O link é válido, mas o aplicativo publicado ainda não tem a API oficial configurada.</strong><div class="small">Configure <code>apiBase</code> no arquivo config.js com a URL HTTPS do servidor e publique novamente.</div></div>`;return false
+    }
+    return await renderStudentCompletionGate(completionToken)
+  }
 
   const gate=document.getElementById("authGate"),host=document.getElementById("authGateContent");
   const hasUsers=await TonicaoAuth.hasAnyUser(),hasOwner=await TonicaoAuth.hasOwner(),current=await TonicaoAuth.currentUser();
@@ -2344,7 +2377,7 @@ async function renderAuthGate(){
       <p class="muted">${hasUsers?"A hierarquia mudou: as contas administrativas antigas agora são Professor. Crie a conta do Dono do aplicativo.":"Crie a conta do Administrador/Dono do aplicativo."}</p>
       <div class="field"><label>Nome</label><input id="bootName" placeholder="Nome do dono"></div>
       <div class="field"><label>Usuário</label><input id="bootUser" autocomplete="username" placeholder="dono"></div>
-      <div class="field"><label>Senha ou PIN</label><input id="bootPass" type="password" autocomplete="new-password" placeholder="mínimo 4 caracteres"></div>
+      <div class="field"><label>Senha</label><input id="bootPass" type="password" autocomplete="new-password" placeholder="9+ caracteres: Aa, número e símbolo"></div>
       <button class="btn primary full" onclick="bootstrapAuth()">Criar Administrador/Dono</button>`;
   }else{
     const invite=new URLSearchParams(location.search).get("invite");
@@ -2353,7 +2386,7 @@ async function renderAuthGate(){
       <p class="muted">Acesse com sua conta da academia.</p>
       ${invite?`<div class="notice grade"><strong>Você recebeu um convite</strong><div class="small">Entre na sua conta para concluir o vínculo.</div></div>`:""}
       <div class="field"><label>Usuário</label><input id="loginUser" autocomplete="username"></div>
-      <div class="field"><label>Senha ou PIN</label><input id="loginPass" type="password" autocomplete="current-password"></div>
+      <div class="field"><label>Senha</label><input id="loginPass" type="password" autocomplete="current-password"></div>
       <button class="btn primary full" onclick="loginAuth()">Entrar</button>
       <div class="auth-divider"><span>ou</span></div>
       <div id="googleLoginArea" class="google-login-area"></div>
@@ -2416,10 +2449,10 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.21`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.23`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
-(async()=>{await ensureSeed();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.21",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();if(await renderAuthGate())await renderAll()})();
+(async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();if(await renderAuthGate())await renderAll()})();
 
 window.addEventListener("tonicao:data-synced",async()=>{try{await renderAll()}catch(e){}});
 window.addEventListener("tonicao:sync-rejected",e=>{const list=e.detail||[];const att=list.find(r=>r&&r.store==="attendance");if(att){toast(`Check-in não confirmado: ${att.reason||"recusado pelo servidor"}`);return}if(list.length)toast(`${list.length} alteração(ões) recusada(s) pelo servidor.`)});

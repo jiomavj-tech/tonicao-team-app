@@ -1,0 +1,44 @@
+TONICÃO TEAM — VALIDAÇÃO v0.22
+Data: 2026-09-19
+
+Objetivo: hardening para homologação/publicação.
+
+VALIDAÇÕES EXECUTADAS
+- node --check app.js: PASS
+- node --check db.js: PASS
+- node --check sync.js: PASS
+- node --check auth.js: PASS
+- node --check remote-sync.js: PASS
+- node --check remote-auth.js: PASS
+- node --check google-auth.js: PASS
+- node --check notifications-client.js: PASS
+- node --check sw.js: PASS
+- node --check config.js: PASS
+- node --check permissions.js: PASS
+- node --check test.js: PASS
+- py_compile server/server.py: PASS
+- py_compile server/permissions.py: PASS
+- py_compile server/test_permissions.py: PASS
+- test.js: PASS
+- server/test_permissions.py: PASS
+- teste HTTP de integração (CORS/bootstrap/convite/expiração): PASS
+- bootstrap sem segredo: PASS (HTTP 503, criação bloqueada)
+- timezone America/Sao_Paulo: PASS (00:30 UTC => data local anterior)
+
+CORREÇÕES PRINCIPAIS
+- Convite não aceita mais servidor vindo da URL.
+- API oficial definida em config.js.
+- Produção não cria alunos/eventos fictícios; migração limpa registros demo conhecidos.
+- Datas do app usam calendário local.
+- Backend usa America/Sao_Paulo por padrão para check-in.
+- Bootstrap remoto exige TONICAO_BOOTSTRAP_SECRET.
+- CORS restrito por allowlist e origem inválida retorna 403.
+- Rate limit adicionado a login, cadastro, convite e sync.
+- Convites expiram (72h por padrão) e são invalidados após decisão.
+- Login remoto atualiza a identidade local; sync recusa identidade divergente.
+- Sessão remota padrão reduzida de 30 dias para 7 dias.
+- Templates Render para teste e produção persistente.
+
+IMPORTANTE
+- config.js está com apiBase vazio. Após criar o serviço Render, preencher a URL HTTPS e publicar novamente.
+- Dados reais só após banco persistente (Persistent Disk/PostgreSQL).

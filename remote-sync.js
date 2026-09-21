@@ -53,6 +53,12 @@ const TonicaoCloud=(()=>{
       if(!silent)throw new Error("Sem internet. Os dados permanecem salvos no aparelho.");
       return getStatus();
     }
+    if(s.cloudSessionToken&&s.remoteUser){
+      const localUser=await TonicaoAuth.currentUser();
+      if(!localUser||localUser.id!==s.remoteUser.id||localUser.role!==s.remoteUser.role){
+        throw new Error("Sessão local e sessão do servidor não correspondem. Entre novamente no servidor.");
+      }
+    }
     const url=endpoint(s.cloudEndpoint);
     if(!url){
       if(!silent)throw new Error("Configure o servidor de sincronização.");

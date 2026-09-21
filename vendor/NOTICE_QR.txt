@@ -1,0 +1,3 @@
+QRCode generation engine bundled from the QRCode vendor included with qrcode-terminal.
+Original QRCode for JavaScript copyright (c) 2009 Kazuhiko Arase, MIT licensed.
+The word QR Code is a registered trademark of DENSO WAVE INCORPORATED.

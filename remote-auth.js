@@ -27,6 +27,7 @@ const TonicaoRemoteAuth=(()=>{
     s.cloudSessionToken=data.token;
     s.remoteUser=data.user;
     await DB.put("settings",s);
+    await TonicaoAuth.loginFederated(data.user);
     return data;
   }
   async function login({username,password}){
@@ -38,6 +39,7 @@ const TonicaoRemoteAuth=(()=>{
     s.cloudSessionToken=data.token;
     s.remoteUser=data.user;
     await DB.put("settings",s);
+    await TonicaoAuth.loginFederated(data.user);
     return data;
   }
   async function me(){

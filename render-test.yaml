@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: tonicao-team-api-test
+    runtime: python
+    rootDir: server
+    buildCommand: ""
+    startCommand: python server.py
+    envVars:
+      - key: TONICAO_BOOTSTRAP_SECRET
+        generateValue: true
+      - key: TONICAO_ALLOWED_ORIGINS
+        value: https://jiomavj-tech.github.io
+      - key: TONICAO_TIMEZONE
+        value: America/Sao_Paulo
+      - key: TONICAO_INVITE_TTL_HOURS
+        value: "72"

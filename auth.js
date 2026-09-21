@@ -34,8 +34,19 @@ const TonicaoAuth=(()=>{
     },material,256);
     return bytesToB64(new Uint8Array(bits));
   }
+  // v0.23: mínimo 9 caracteres com maiúscula, minúscula, número e símbolo, em qualquer ordem.
+  function passwordProblem(password){
+    const p=String(password||"");
+    if(p.length<9) return "A senha precisa ter pelo menos 9 caracteres.";
+    if(!/[A-Z]/.test(p)) return "A senha precisa ter pelo menos uma letra MAIÚSCULA.";
+    if(!/[a-z]/.test(p)) return "A senha precisa ter pelo menos uma letra minúscula.";
+    if(!/[0-9]/.test(p)) return "A senha precisa ter pelo menos um número.";
+    if(!/[^A-Za-z0-9]/.test(p)) return "A senha precisa ter pelo menos um símbolo, como . ! @ # ou *";
+    return "";
+  }
   async function makePassword(password){
-    if(!password || String(password).length<4) throw new Error("A senha/PIN precisa ter pelo menos 4 caracteres.");
+    const problem=passwordProblem(password);
+    if(problem) throw new Error(problem);
     const salt=crypto.getRandomValues(new Uint8Array(16));
     const saltB64=bytesToB64(salt);
     return {salt:saltB64,hash:await deriveHash(password,saltB64),iterations:180000};
@@ -123,7 +134,7 @@ const TonicaoAuth=(()=>{
       email:remoteUser.email||"",
       role,
       studentId:remoteUser.studentId||"",
-      provider:"google",
+      provider:remoteUser.provider||"remote",
       googleSub:remoteUser.googleSub||"",
       pictureUrl:remoteUser.picture||"",
       active:true,
@@ -131,7 +142,7 @@ const TonicaoAuth=(()=>{
     };
     await DB.put("users",local);
     await setSession(local);
-    await audit("auth.google","Login com Google realizado",local.studentId||null,{userId:local.id,email:local.email});
+    await audit("auth.federated","Login remoto realizado",local.studentId||null,{userId:local.id,email:local.email,provider:local.provider});
     return local;
   }
 
@@ -212,7 +223,7 @@ const TonicaoAuth=(()=>{
     return u;
   }
   return {
-    ROLE_LABEL,hasAnyUser,hasOwner,bootstrapAdmin,createUser,changePassword,setActive,login,logout,
+    ROLE_LABEL,hasAnyUser,hasOwner,bootstrapAdmin,createUser,changePassword,setActive,login,logout,passwordProblem,
     currentUser,users,allUsers,can,requirePerm,audit,loginFederated
   };
 })();

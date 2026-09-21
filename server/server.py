@@ -80,9 +80,20 @@ def connect():
     db.execute("CREATE INDEX IF NOT EXISTS idx_google_sub ON app_users(academy_id,google_sub)")
     db.commit();return db
 
+def password_problem(password):
+    """v0.23: mínimo 9 caracteres com maiúscula, minúscula, número e símbolo, em qualquer ordem."""
+    p=str(password or "")
+    if len(p)<9:return "A senha precisa ter pelo menos 9 caracteres."
+    if not any(c.isascii() and c.isupper() for c in p):return "A senha precisa ter pelo menos uma letra MAIÚSCULA."
+    if not any(c.isascii() and c.islower() for c in p):return "A senha precisa ter pelo menos uma letra minúscula."
+    if not any(c.isdigit() for c in p):return "A senha precisa ter pelo menos um número."
+    if all(c.isascii() and c.isalnum() for c in p):return "A senha precisa ter pelo menos um símbolo, como . ! @ # ou *"
+    return ""
+
 def make_password(password,iterations=180000):
     import base64
-    if len(password)<4:raise ValueError("Senha precisa ter pelo menos 4 caracteres.")
+    problem=password_problem(password)
+    if problem:raise ValueError(problem)
     salt=secrets.token_bytes(16);digest=hashlib.pbkdf2_hmac("sha256",password.encode(),salt,iterations,dklen=32)
     return base64.b64encode(salt).decode(),base64.b64encode(digest).decode(),iterations
 
