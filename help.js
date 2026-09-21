@@ -86,6 +86,8 @@
     more: {
       title: "Mais — Todas as ferramentas",
       steps: [
+        ["Compartilhar aplicativo (ou o botão de compartilhar no topo): envia o link pelo WhatsApp.",
+         "É assim que novos alunos instalam o app."],
         ["Ranking e Relatórios: pontuação do ano, presença do mês e exportação em planilha (CSV).",
          "Números ajudam a ver quem está evoluindo e quem está sumindo."],
         ["Sistema de Pontuação: lance campeonatos, resultados e ajustes manuais.",
@@ -191,6 +193,8 @@
     more: {
       title: "Mais",
       steps: [
+        ["Compartilhar aplicativo (ou o botão de compartilhar no topo): envia o link pelo WhatsApp.",
+         "Chame um amigo para treinar: ele instala direto pelo link."],
         ["Ranking: veja sua posição e o extrato de pontos em \"Minha pontuação\".",
          "Você entende de onde veio cada ponto."],
         ["Regras da Academia e Etiqueta no Dojô.",
@@ -230,8 +234,10 @@
          "Você resolve na hora, sem perder histórico."],
         ["\"Desativar\" bloqueia o login sem apagar nada.",
          "Se a pessoa voltar, é só reativar — o histórico continua lá."],
-        ["\"Usuários do servidor\" e \"+ Remoto\" só funcionam com o servidor publicado.",
-         "São as contas que entram de qualquer celular, com os dados sincronizados."]
+        ["Com o servidor conectado, \"+ Novo usuário\" cria a conta no aparelho e no servidor de uma vez. Se aparecer \"Servidor não conectado\", toque em \"Conectar ao servidor\" e entre como Administrador remoto.",
+         "A conta do servidor é a que deixa a pessoa entrar de qualquer celular, com os dados sincronizados."],
+        ["\"Contas no servidor — avançado\" e \"+ Conta avançada\" são só para reparo.",
+         "No dia a dia, o \"+ Novo usuário\" já resolve tudo."]
       ]
     },
     "more:systemaccess": {
@@ -265,6 +271,10 @@
     more: {
       title: "Mais — Ferramentas do Dono",
       steps: [
+        ["Apresentar aplicativo: mostra as visões de Dono, Professor e Aluno com dados de demonstração.",
+         "Ideal para vender o app a outra academia ou gravar tutorial, sem mexer em nenhum dado real."],
+        ["Compartilhar aplicativo: envia o link pelo WhatsApp ou e-mail.",
+         "Quem recebe instala direto pelo navegador."],
         ["Usuários e permissões: crie professores e alunos, troque senhas, desative contas.",
          "Controle total de quem entra no app."],
         ["Acesso da academia: suspenda ou libere a academia inteira.",
