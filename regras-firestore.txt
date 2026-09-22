@@ -1,0 +1,140 @@
+rules_version = '2';
+// Tonicão Team v0.22 — regras de segurança (fazem o papel do servidor).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signed() { return request.auth != null; }
+    function academyPath(a) { return /databases/$(database)/documents/academies/$(a); }
+    function memberPath(a) { return /databases/$(database)/documents/academies/$(a)/members/$(request.auth.uid); }
+    function mem(a) { return get(memberPath(a)).data; }
+    function isMember(a) { return signed() && exists(memberPath(a)) && mem(a).active == true; }
+    function isProf(a) { return isMember(a) && mem(a).role == 'professor'; }
+    function isAdmin(a) { return isMember(a) && mem(a).role == 'admin'; }
+    function isStaff(a) { return isProf(a) || isAdmin(a); }
+    function isAluno(a) { return isMember(a) && mem(a).role == 'aluno'; }
+    function sid(a) { return mem(a).studentId; }
+    function notBlocked(a) { return isAdmin(a) || get(academyPath(a)).data.get('accessStatus', 'active') != 'blocked'; }
+    // Toda gravação precisa carimbar a hora do servidor e quem gravou (usado pela sincronização)
+    function stamped() { return request.resource.data._srv == request.time && request.resource.data._by == request.auth.uid; }
+    function shortStr(v, n) { return v is string && v.size() <= n; }
+
+    // ---------- Academia ----------
+    match /academies/{a} {
+      allow get: if isMember(a) || (signed() && resource.data.ownerUid == request.auth.uid);
+      // Primeira configuração: quem cria a academia vira o Dono (só funciona uma vez)
+      allow create: if signed() && request.resource.data.ownerUid == request.auth.uid
+                    && request.resource.data.accessStatus == 'active';
+      allow update: if isAdmin(a) && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if false;
+
+      // ---------- Contas ----------
+      match /members/{uid} {
+        allow get: if signed() && (request.auth.uid == uid || isStaff(a));
+        allow list: if isStaff(a);
+        allow create: if signed() && (
+          // Dono criando a própria conta de administrador na primeira configuração
+          (uid == request.auth.uid && get(academyPath(a)).data.ownerUid == request.auth.uid
+            && request.resource.data.role == 'admin' && request.resource.data.active == true)
+          // Qualquer pessoa entrando pela 1ª vez: fica aguardando liberação, sem poder nenhum
+          || (uid == request.auth.uid && request.resource.data.role == 'aluno' && request.resource.data.active == false
+            && request.resource.data.studentId == ''
+            && request.resource.data.keys().hasOnly(['uid','name','email','picture','provider','role','studentId','active','createdAt','_srv','_by']))
+          || isAdmin(a)
+          || (isProf(a) && request.resource.data.role == 'aluno'));
+        allow update: if isAdmin(a)
+          || (isProf(a) && resource.data.role == 'aluno' && request.resource.data.role == 'aluno');
+        allow delete: if isAdmin(a) && uid != request.auth.uid;
+      }
+
+      // ---------- Convites e pré-cadastros ----------
+      match /registrationInvites/{token} {
+        allow get: if true;                  // o token do link é secreto (36 caracteres aleatórios)
+        allow list: if isStaff(a);
+        allow create: if (isProf(a) && request.resource.data.status == 'invited')
+          || (request.resource.data.status == 'pending' && request.resource.data.source == 'self'
+              && request.resource.data.keys().hasOnly(['name','phone','birth','graduationTrack','note','status','source','inviteToken','createdAt','_srv','_by'])
+              && shortStr(request.resource.data.name, 120) && request.resource.data.name.size() > 1
+              && shortStr(request.resource.data.phone, 40) && shortStr(request.resource.data.note, 300));
+        allow update: if isProf(a)
+          || (resource.data.status == 'invited' && request.resource.data.status == 'awaiting_approval'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','phone','email','birth','graduationTrack','belt','stripes','guardianName','guardianPhone','emergencyName','emergencyPhone','note','status','completedAt','_srv','_by'])
+              && shortStr(request.resource.data.name, 120) && shortStr(request.resource.data.note, 300));
+        allow delete: if isProf(a);
+      }
+
+      // ---------- Código da aula (só o Professor vê) ----------
+      match /sessionCodes/{id} {
+        allow read: if isStaff(a) && notBlocked(a);
+        allow write: if isProf(a) && notBlocked(a) && stamped();
+      }
+      match /gradingPrivate/{id} {       // nota privada da avaliação
+        allow read: if isStaff(a) && notBlocked(a);
+        allow write: if isProf(a) && notBlocked(a) && stamped();
+      }
+
+      // ---------- Presenças ----------
+      match /attendance/{id} {
+        allow read: if notBlocked(a) && (isStaff(a) || (isAluno(a) && resource.data.studentId == sid(a)));
+        allow write: if isProf(a) && notBlocked(a) && stamped();
+        // Check-in do aluno: só a própria presença, com o código certo, dentro do horário da aula e pagamento liberado
+        allow create: if isAluno(a) && notBlocked(a) && stamped()
+          && request.resource.data.keys().hasOnly(['id','studentId','sessionId','date','time','source','status','checkinCode','_srv','_by'])
+          && request.resource.data.studentId == sid(a)
+          && id == request.resource.data.sessionId + '_' + sid(a)
+          && request.resource.data.status == 'pending'
+          && request.resource.data.source == 'qr-codigo'
+          && exists(/databases/$(database)/documents/academies/$(a)/sessionCodes/$(request.resource.data.sessionId))
+          && get(/databases/$(database)/documents/academies/$(a)/sessionCodes/$(request.resource.data.sessionId)).data.code == request.resource.data.checkinCode
+          && request.time.toMillis() >= get(/databases/$(database)/documents/academies/$(a)/sessionCodes/$(request.resource.data.sessionId)).data.startMs
+          && request.time.toMillis() <= get(/databases/$(database)/documents/academies/$(a)/sessionCodes/$(request.resource.data.sessionId)).data.endMs + 21600000
+          && !(get(/databases/$(database)/documents/academies/$(a)/students/$(sid(a))).data.get('payment', 'liberado') in ['pendente', 'verificar', 'bloqueado']);
+      }
+
+      // ---------- Graduação: aluno só marca o próprio progresso ----------
+      match /gradingAssignments/{id} {
+        allow read: if notBlocked(a) && (isStaff(a) || (isAluno(a) && resource.data.studentId == sid(a)));
+        allow write: if isProf(a) && notBlocked(a) && stamped();
+        allow update: if isAluno(a) && notBlocked(a) && stamped() && resource.data.studentId == sid(a)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['progress','_srv','_by'])
+          && request.resource.data.progress is map;
+      }
+
+      // ---------- Ficha do aluno ----------
+      match /students/{id} {
+        allow get: if notBlocked(a) && (isStaff(a) || (isAluno(a) && id == sid(a)));
+        allow list: if isStaff(a) && notBlocked(a);
+        allow write: if isProf(a) && notBlocked(a) && stamped();
+      }
+      match /studentsPublic/{id} {       // nome, faixa e pontos (ranking)
+        allow read: if isMember(a) && notBlocked(a);
+        allow write: if isProf(a) && notBlocked(a) && stamped();
+      }
+
+      // ---------- Dados só do próprio aluno ----------
+      match /{store}/{id} {
+        allow read: if notBlocked(a) && store in ['gradingHistory','gradingReminders','pointsLedger','paymentStatus']
+          && (isStaff(a) || (isAluno(a) && resource.data.studentId == sid(a)));
+        allow write: if isProf(a) && notBlocked(a) && stamped()
+          && store in ['gradingHistory','gradingReminders','pointsLedger','paymentStatus'];
+      }
+
+      // ---------- Conteúdo compartilhado ----------
+      match /{store}/{id} {
+        allow read: if isMember(a) && notBlocked(a)
+          && store in ['techniques','gradingPlans','events','academyContent','academyTimeline','academyGallery','academyRules',
+                       'scoreRules','referenceMaterials','timerPresets','sequenceRules','classSessions'];
+        allow write: if notBlocked(a) && stamped() && (
+          (isProf(a) && store in ['techniques','gradingPlans','events','academyContent','academyTimeline','academyGallery','academyRules',
+                                  'scoreRules','referenceMaterials','timerPresets','sequenceRules','classSessions'])
+          || (isAdmin(a) && store in ['academyContent','academyTimeline','academyGallery','referenceMaterials']));
+      }
+
+      // ---------- Avisos ----------
+      match /notifications/{id} {
+        allow read: if notBlocked(a) && (isStaff(a) || (isAluno(a)
+          && (resource.data.targetStudentId == sid(a) || resource.data.targetRole == 'aluno')));
+        allow write: if isStaff(a) && notBlocked(a) && stamped();
+      }
+    }
+  }
+}
