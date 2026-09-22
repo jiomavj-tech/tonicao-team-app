@@ -334,6 +334,10 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
 .request-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px}
 .auth-card .field{ text-align:left }
 
+/* v0.25.1: janelas e avisos sempre acima da tela de entrada */
+.modal-backdrop{z-index:2000!important}
+.toast{z-index:3000!important}
+
 </style>
 </head>
 <body>
@@ -353,7 +357,7 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.25</p>
+        <p id="topSubtitle">Piloto offline-first • v0.25.1</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -4118,7 +4122,7 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.25`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.25.1`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();if(await renderAuthGate())await renderAll()})();
