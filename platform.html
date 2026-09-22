@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tonicão — Central da Plataforma</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#f4f5f7;color:#151515;margin:0}.wrap{max-width:820px;margin:auto;padding:20px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 4px 18px #0000000b}
+input,textarea,button{font:inherit}input,textarea{width:100%;padding:11px;border:1px solid #d1d5db;border-radius:10px;box-sizing:border-box;margin:5px 0 10px}
+button{border:0;border-radius:10px;padding:11px 14px;font-weight:800;cursor:pointer}.primary{background:#111;color:#fff}.danger{background:#b91c1c;color:#fff}.ok{background:#166534;color:#fff}
+.row{display:flex;gap:8px;flex-wrap:wrap}.muted{color:#6b7280;font-size:14px}.pill{display:inline-block;padding:4px 9px;border-radius:999px;background:#e5e7eb;font-size:12px;font-weight:800}
+</style>
+</head><body><div class="wrap">
+<h1>🛡️ Central da Plataforma</h1><p class="muted">Separada do Administrador/Dono de cada academia. Aqui ficam somente status comercial/acesso das academias.</p>
+<div id="app"><div class="card">Carregando…</div></div></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+firebase.initializeApp({apiKey:"AIzaSyBTtxivTRHEPj5CjsVwUdtcngb0_St5yX0",authDomain:"tonicao-sul-ilha.firebaseapp.com",projectId:"tonicao-sul-ilha",storageBucket:"tonicao-sul-ilha.firebasestorage.app",messagingSenderId:"803430406523",appId:"1:803430406523:web:9e24cfef4c7f6f676e45de"});
+const auth=firebase.auth(),db=firebase.firestore(),host=document.getElementById("app");
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function login(){host.innerHTML=`<div class="card"><h2>Entrar</h2><input id="email" type="email" placeholder="E-mail"><input id="pass" type="password" placeholder="Senha"><button class="primary" onclick="doLogin()">Entrar</button></div>`}
+async function doLogin(){try{await auth.signInWithEmailAndPassword(document.getElementById("email").value.trim(),document.getElementById("pass").value)}catch(e){alert(e.message)}}
+async function load(){
+ const u=auth.currentUser;if(!u){login();return}
+ const pa=await db.collection("platformAdmins").doc(u.uid).get();
+ if(!pa.exists){host.innerHTML=`<div class="card"><h2>Acesso ainda não liberado</h2><p>Esta conta está autenticada, mas não é Administrador da Plataforma.</p><p class="muted">UID para o cadastro inicial no Firestore:</p><textarea readonly>${esc(u.uid)}</textarea><button onclick="auth.signOut()">Sair</button></div>`;return}
+ const snap=await db.collection("academies").get();
+ host.innerHTML=`<div class="card"><div class="row"><strong>${esc(u.email)}</strong><span class="pill">Administrador da Plataforma</span><button onclick="auth.signOut()">Sair</button></div></div>`+
+ snap.docs.map(d=>{const a=d.data()||{},blocked=a.accessStatus==="blocked";return `<div class="card"><h3>${esc(a.name||d.id)}</h3><div class="muted">ID: ${esc(d.id)}</div><p><span class="pill">${blocked?"BLOQUEADO":"ATIVO"}</span></p><textarea id="reason-${esc(d.id)}" placeholder="Motivo / mensagem">${esc(a.accessReason||"")}</textarea><div class="row"><button class="ok" onclick="setStatus('${esc(d.id)}','active')">Liberar</button><button class="danger" onclick="setStatus('${esc(d.id)}','blocked')">Bloquear</button><a href="./?academy=${encodeURIComponent(d.id)}" target="_blank">Abrir academia</a></div></div>`}).join("") || '<div class="card">Nenhuma academia cadastrada.</div>'
+}
+async function setStatus(id,status){try{await db.collection("academies").doc(id).update({accessStatus:status,accessReason:document.getElementById("reason-"+id).value.trim(),accessUpdatedAt:firebase.firestore.FieldValue.serverTimestamp()});await load()}catch(e){alert(e.message)}}
+auth.onAuthStateChanged(load);
+</script></body></html>
