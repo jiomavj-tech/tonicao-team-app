@@ -357,7 +357,7 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.25.1</p>
+        <p id="topSubtitle">Piloto offline-first • v0.26</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -416,12 +416,13 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
 </script>
 <script>
 document.addEventListener("error",e=>{if(e.target&&e.target.tagName==="IMG"&&!e.target.dataset.fallback){e.target.dataset.fallback="1";e.target.style.visibility="hidden"}},true);
-window.TONICAO_FIREBASE={apiKey:"AIzaSyBTtxivTRHEPj5CjsVwUdtcngb0_St5yX0",authDomain:"tonicao-sul-ilha.firebaseapp.com",projectId:"tonicao-sul-ilha",storageBucket:"tonicao-sul-ilha.firebasestorage.app",messagingSenderId:"803430406523",appId:"1:803430406523:web:9e24cfef4c7f6f676e45de",academyId:"tonicao-sul-ilha"};
-window.TONICAO_APP_CONFIG=Object.freeze({mode:"production",apiBase:"",academyId:"tonicao-sul-ilha",publicAppUrl:"https://jiomavj-tech.github.io/tonicao-team-app/",allowedApiHosts:[]});
+window.TONICAO_DEMO=new URLSearchParams(location.search).get("demo")==="1";
+if(!window.TONICAO_DEMO)window.TONICAO_FIREBASE={apiKey:"AIzaSyBTtxivTRHEPj5CjsVwUdtcngb0_St5yX0",authDomain:"tonicao-sul-ilha.firebaseapp.com",projectId:"tonicao-sul-ilha",storageBucket:"tonicao-sul-ilha.firebasestorage.app",messagingSenderId:"803430406523",appId:"1:803430406523:web:9e24cfef4c7f6f676e45de",academyId:"tonicao-sul-ilha"};
+window.TONICAO_APP_CONFIG=Object.freeze({mode:window.TONICAO_DEMO?"demo":"production",apiBase:"",academyId:"tonicao-sul-ilha",publicAppUrl:"https://jiomavj-tech.github.io/tonicao-team-app/",allowedApiHosts:[]});
 </script>
 <script>
 /* ===== db.js ===== */
-const DB_NAME = "tonicao_app";
+const DB_NAME = window.TONICAO_DEMO ? "tonicao_demo" : "tonicao_app"; // v0.26: apresentação usa banco separado
 
 /* v0.21 — Proteção contra injeção de HTML/JS.
    Todo texto gravado no banco passa por cleanValue():
@@ -4122,7 +4123,7 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.25.1`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.26`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();if(await renderAuthGate())await renderAll()})();
@@ -5026,6 +5027,107 @@ window.addEventListener("load",()=>setTimeout(async()=>{
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init,{once:true});
   else init();
 })();
+/* ===== demo-mode.js ===== */
+/* v0.26 — Modo Apresentação completo.
+   Abre o app inteiro (todas as telas e funções) num banco separado, só com dados fictícios,
+   sem Firebase e sem tocar nos dados reais. Endereço: ...?demo=1 */
+(()=>{
+  "use strict";
+  const DEMO=!!window.TONICAO_DEMO;
+  const BASE=location.origin+location.pathname;
+  const PASS="Demo@2026!";
+  const ACCOUNTS={
+    admin:{username:"dono.demo",name:"Dono (demonstração)",label:"🛡️ Dono"},
+    professor:{username:"professor.demo",name:"Professor Demo",label:"🥋 Professor"},
+    aluno:{username:"aluno.demo",name:"Carlos Souza",label:"👤 Aluno",studentId:"s2"}
+  };
+
+  if(!DEMO){
+    // No app real: o botão "Apresentar aplicativo" abre a versão completa de demonstração
+    window.openPresentation=function(){location.href=BASE+"?demo=1"};
+    const fixText=()=>{document.querySelectorAll("[data-v024-present] .small").forEach(el=>{if(!el.dataset.v026){el.dataset.v026="1";el.textContent="Abre o app completo com dados fictícios: Dono, Professor e Aluno. Seus dados reais não são tocados."}})};
+    new MutationObserver(fixText).observe(document.documentElement,{childList:true,subtree:true});
+    return;
+  }
+
+  const css=`
+    body{padding-top:52px!important}
+    .topbar{top:52px!important}
+    #demoBar{position:fixed;top:0;left:0;right:0;z-index:1500;background:#b45309;color:#fff;display:flex;align-items:center;gap:6px;padding:6px 8px;padding-top:calc(6px + env(safe-area-inset-top,0px));font:600 13px system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.25);overflow-x:auto}
+    #demoBar .t{white-space:nowrap;margin-right:4px}
+    #demoBar button{border:0;border-radius:999px;padding:8px 11px;font:700 13px system-ui,sans-serif;background:rgba(255,255,255,.2);color:#fff;white-space:nowrap;cursor:pointer}
+    #demoBar button.on{background:#fff;color:#b45309}
+    #demoBar .sp{flex:1}
+    .v024-demo-close,#v024Presentation{display:none!important}`;
+  function bar(role){
+    let b=document.getElementById("demoBar");
+    if(!b){
+      const st=document.createElement("style");st.textContent=css;document.head.appendChild(st);
+      b=document.createElement("div");b.id="demoBar";document.body.appendChild(b);
+    }
+    b.innerHTML=`<span class="t">🎬 Apresentação</span>`+
+      Object.entries(ACCOUNTS).map(([r,a])=>`<button class="${r===role?"on":""}" onclick="demoSwitch('${r}')">${a.label}</button>`).join("")+
+      `<span class="sp"></span><button onclick="demoMenu()">⋯</button>`;
+  }
+  async function ensureAccounts(){
+    if(!(await TonicaoAuth.hasOwner())){
+      await TonicaoAuth.bootstrapAdmin({name:ACCOUNTS.admin.name,username:ACCOUNTS.admin.username,password:PASS});
+    }
+    await TonicaoAuth.login(ACCOUNTS.admin.username,PASS);
+    const all=await (TonicaoAuth.allUsers?TonicaoAuth.allUsers():TonicaoAuth.users());
+    for(const r of ["professor","aluno"]){
+      const a=ACCOUNTS[r];
+      if(!all.some(u=>u.username===a.username))await TonicaoAuth.createUser({name:a.name,username:a.username,password:PASS,role:r,studentId:a.studentId||""});
+    }
+  }
+  async function switchTo(role){
+    const a=ACCOUNTS[role];
+    try{await TonicaoAuth.logout()}catch(e){}
+    await TonicaoAuth.login(a.username,PASS);
+    sessionStorage.setItem("tonicaoDemoRole",role);
+    bar(role);
+    try{closeModal()}catch(e){}
+    await renderAuthGate();await renderAll();
+    try{goPage("home")}catch(e){}
+    window.scrollTo(0,0);
+    toast(`Agora você está vendo o app como ${a.label.replace(/^\S+\s/,"")}.`);
+  }
+  window.demoSwitch=r=>switchTo(r).catch(e=>toast(e.message||"Falha ao trocar."));
+  window.demoMenu=function(){
+    showModal(`<h3>🎬 Modo Apresentação</h3>
+      <p class="small muted">Tudo aqui é fictício e fica separado dos dados reais da academia. Pode apertar todos os botões à vontade.</p>
+      <div class="notice"><strong>Roteiro sugerido</strong><div class="small">
+        1. <b>Professor</b>: abra uma aula (Check-in) e mostre o QR e o código.<br>
+        2. <b>Aluno</b>: faça o check-in com o código e veja pontos e ranking.<br>
+        3. <b>Professor</b>: graduação, eventos, técnicas, relatórios.<br>
+        4. <b>Dono</b>: usuários, conteúdo da academia e acesso do sistema.</div></div>
+      <button class="btn secondary full" style="margin-top:12px" onclick="demoReset()">🔄 Recomeçar apresentação do zero</button>
+      <button class="btn primary full" style="margin-top:8px" onclick="demoExit()">✅ Sair da apresentação</button>`);
+  };
+  window.demoReset=function(){
+    if(!confirm("Apagar tudo o que foi feito na apresentação e começar de novo?"))return;
+    sessionStorage.removeItem("tonicaoDemoRole");
+    const req=indexedDB.deleteDatabase("tonicao_demo");
+    req.onsuccess=req.onerror=req.onblocked=()=>location.reload();
+    setTimeout(()=>location.reload(),1500);
+  };
+  window.demoExit=function(){location.href=BASE};
+
+  async function start(){
+    // espera o app terminar de preparar o banco de demonstração
+    for(let i=0;i<60;i++){
+      try{if((await DB.getAll("gradingPlans")).length)break}catch(e){}
+      await new Promise(r=>setTimeout(r,150));
+    }
+    try{
+      await ensureAccounts();
+      const role=sessionStorage.getItem("tonicaoDemoRole")||"professor";
+      await switchTo(role);
+    }catch(e){console.warn("Demo",e);toast("Não foi possível abrir a apresentação: "+(e.message||e))}
+  }
+  window.addEventListener("load",()=>setTimeout(start,300));
+})();
+
 </script>
 </body>
 </html>
