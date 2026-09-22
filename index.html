@@ -358,7 +358,7 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.31</p>
+        <p id="topSubtitle">Piloto offline-first • v0.32</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -4310,7 +4310,7 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.31`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.32`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
@@ -4475,7 +4475,8 @@ window.addEventListener("load",()=>setTimeout(async()=>{
     const u=await me();if(!u)return false; // espera o login
     sessionStorage.removeItem("tonicaoPendingCheckin");
     if(u.role!=="aluno"){toast("Este QR é para o check-in dos alunos.");return true}
-    await checkinBySession(u.studentId,p.sessionId,p.code);
+    if(typeof window.familyCheckinEntryV032==="function")await window.familyCheckinEntryV032(p.sessionId,p.code);
+    else await checkinBySession(u.studentId,p.sessionId,p.code);
     return true;
   }
   (async()=>{for(let i=0;i<600;i++){try{if(await processPendingLink())return}catch(e){console.warn(e)}await new Promise(r=>setTimeout(r,1000))}})();
@@ -4801,8 +4802,8 @@ window.addEventListener("load",()=>setTimeout(async()=>{
       ${s.lesson.notes?`<div class="small" style="margin-top:6px">${esc(s.lesson.notes)}</div>`:""}</div></div>`;
   }
   window.myLessonsModalV031=async function(){
-    const u=await me();if(!u?.studentId)return;
-    const techs=await DB.getAll("techniques"),list=await myLessons(u.studentId);
+    const cur=await getCurrentStudent();if(!cur)return;
+    const techs=await DB.getAll("techniques"),list=await myLessons(cur.id);
     showModal(`<h3>📖 O que eu treinei</h3><div class="list">${list.length?(await Promise.all(list.map(s=>lessonCard(s,techs)))).join(""):`<div class="notice">Quando o Professor anotar as aulas em que você treinou, elas aparecem aqui.</div>`}</div>`);
   };
 
@@ -4861,8 +4862,8 @@ window.addEventListener("load",()=>setTimeout(async()=>{
   window.renderStudentHome=async function(...a){
     const r=await baseStuHome.apply(this,a);
     try{
-      const home=document.getElementById("home");const u=await me();if(!home||!u?.studentId||home.querySelector("[data-v031]"))return r;
-      const list=await myLessons(u.studentId),techs=await DB.getAll("techniques");
+      const home=document.getElementById("home");const cur=await getCurrentStudent();if(!home||!cur||home.querySelector("[data-v031]"))return r;
+      const list=await myLessons(cur.id),techs=await DB.getAll("techniques");
       const box=document.createElement("div");box.dataset.v031="1";
       box.innerHTML=`<div class="section-title"><h2>📖 O que eu treinei</h2>${list.length>3?`<button class="btn secondary" onclick="myLessonsModalV031()">Ver tudo</button>`:""}</div>
         <div class="list">${list.length?(await Promise.all(list.slice(0,3).map(s=>lessonCard(s,techs)))).join(""):`<div class="notice small">Quando o Professor anotar as aulas, o que você treinou aparece aqui.</div>`}</div>`;
@@ -4883,6 +4884,7 @@ window.addEventListener("load",()=>setTimeout(async()=>{
   };
 })();
 </script>
+<script src="./features-v032-family.js"></script>
 <script>/* ===== help.js ===== */
 /* ===== help.js ===== */
 /* =====================================================================

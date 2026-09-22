@@ -1,5 +1,5 @@
 rules_version = '2';
-// Tonicão Team v0.29 — multiacademia, separação Plataforma/Academia e consentimento.
+// Tonicão Team v0.32 — multiacademia, plataforma, consentimento e família/dependentes.
 service cloud.firestore {
   match /databases/{database}/documents {
     function signed() { return request.auth != null; }
@@ -14,6 +14,8 @@ service cloud.firestore {
     function isStaff(a) { return isProf(a) || isAdmin(a); }
     function isAluno(a) { return isMember(a) && mem(a).role == 'aluno'; }
     function sid(a) { return mem(a).studentId; }
+    function dependentIds(a) { return mem(a).get('dependentStudentIds', []); }
+    function ownOrDependent(a, studentId) { return isAluno(a) && (studentId == sid(a) || studentId in dependentIds(a)); }
     function notBlocked(a) { return isPlatformAdmin() || isAdmin(a) || get(academyPath(a)).data.get('accessStatus', 'active') != 'blocked'; }
     function stamped() { return request.resource.data._srv == request.time && request.resource.data._by == request.auth.uid; }
     function shortStr(v, n) { return v is string && v.size() <= n; }
@@ -49,6 +51,7 @@ service cloud.firestore {
           || isAdmin(a)
           || (isProf(a) && request.resource.data.role == 'aluno')
         );
+        // Professor pode vincular/remover dependentes em uma conta de responsável/aluno.
         allow update: if isAdmin(a)
           || (isProf(a) && resource.data.role == 'aluno' && request.resource.data.role == 'aluno');
         allow delete: if isAdmin(a) && uid != request.auth.uid;
@@ -83,6 +86,22 @@ service cloud.firestore {
                   && request.resource.data.guardianPhone.size() > 3
                   && request.resource.data.guardianConsentAt is string
                   && request.resource.data.guardianConsentAt.size() > 0))
+        ) || (
+          signed() && isAluno(a)
+          && request.resource.data.status == 'pending'
+          && request.resource.data.source == 'family'
+          && request.resource.data.guardianUserId == request.auth.uid
+          && request.resource.data.keys().hasOnly([
+            'name','phone','birth','graduationTrack','belt','stripes','guardianName','guardianPhone',
+            'guardianUserId','guardianStudentId','relationship','privacyConsentAt','guardianConsentAt',
+            'status','source','inviteToken','createdAt','_srv','_by'
+          ])
+          && shortStr(request.resource.data.name,120) && request.resource.data.name.size() > 1
+          && request.resource.data.birth is string && request.resource.data.birth.size() == 10
+          && request.resource.data.graduationTrack == 'kids'
+          && request.resource.data.relationship in ['filho','filha','dependente']
+          && request.resource.data.privacyConsentAt is string && request.resource.data.privacyConsentAt.size() > 0
+          && request.resource.data.guardianConsentAt is string && request.resource.data.guardianConsentAt.size() > 0
         );
         allow update: if (
           isProf(a)
@@ -121,12 +140,12 @@ service cloud.firestore {
       }
 
       match /attendance/{id} {
-        allow read: if notBlocked(a) && (isStaff(a) || (isAluno(a) && resource.data.studentId == sid(a)));
+        allow read: if notBlocked(a) && (isStaff(a) || ownOrDependent(a, resource.data.studentId));
         allow write: if isProf(a) && notBlocked(a) && stamped();
         allow create: if isAluno(a) && notBlocked(a) && stamped()
           && request.resource.data.keys().hasOnly(['id','studentId','sessionId','date','time','source','status','checkinCode','_srv','_by'])
-          && request.resource.data.studentId == sid(a)
-          && id == request.resource.data.sessionId + '_' + sid(a)
+          && ownOrDependent(a, request.resource.data.studentId)
+          && id == request.resource.data.sessionId + '_' + request.resource.data.studentId
           && request.resource.data.status == 'pending'
           && request.resource.data.source == 'qr-codigo'
           && exists(/databases/$(database)/documents/academies/$(a)/sessionCodes/$(request.resource.data.sessionId))
@@ -137,36 +156,36 @@ service cloud.firestore {
                get(/databases/$(database)/documents/academies/$(a)/sessionCodes/$(request.resource.data.sessionId)).data.get('nextCode', '-')]
           && request.time.toMillis() >= get(/databases/$(database)/documents/academies/$(a)/sessionCodes/$(request.resource.data.sessionId)).data.startMs
           && request.time.toMillis() <= get(/databases/$(database)/documents/academies/$(a)/sessionCodes/$(request.resource.data.sessionId)).data.endMs + 21600000
-          && !(get(/databases/$(database)/documents/academies/$(a)/students/$(sid(a))).data.get('payment','liberado') in ['pendente','verificar','bloqueado']);
+          && !(get(/databases/$(database)/documents/academies/$(a)/students/$(request.resource.data.studentId)).data.get('payment','liberado') in ['pendente','verificar','bloqueado']);
       }
 
       match /classBookings/{id} {
-        allow read: if notBlocked(a) && (isStaff(a) || (isAluno(a) && resource.data.studentId == sid(a)));
+        allow read: if notBlocked(a) && (isStaff(a) || ownOrDependent(a, resource.data.studentId));
         allow write: if isProf(a) && notBlocked(a) && stamped();
         allow create: if isAluno(a) && notBlocked(a) && stamped()
           && request.resource.data.keys().hasOnly(['id','scheduleId','date','studentId','status','createdAt','_srv','_by'])
-          && request.resource.data.studentId == sid(a)
+          && ownOrDependent(a, request.resource.data.studentId)
           && request.resource.data.status == 'pending'
           && request.resource.data.date is string && request.resource.data.date.size() == 10
-          && id == request.resource.data.scheduleId + '_' + request.resource.data.date + '_' + sid(a)
+          && id == request.resource.data.scheduleId + '_' + request.resource.data.date + '_' + request.resource.data.studentId
           && exists(/databases/$(database)/documents/academies/$(a)/classSchedule/$(request.resource.data.scheduleId));
         allow update: if isAluno(a) && notBlocked(a) && stamped()
-          && resource.data.studentId == sid(a) && resource.data.status == 'pending'
-          && request.resource.data.studentId == sid(a) && request.resource.data.status == 'pending'
+          && ownOrDependent(a, resource.data.studentId) && resource.data.status == 'pending'
+          && request.resource.data.studentId == resource.data.studentId && request.resource.data.status == 'pending'
           && request.resource.data.scheduleId == resource.data.scheduleId && request.resource.data.date == resource.data.date
           && request.resource.data.keys().hasOnly(['id','scheduleId','date','studentId','status','createdAt','_deleted','_srv','_by']);
       }
 
       match /gradingAssignments/{id} {
-        allow read: if notBlocked(a) && (isStaff(a) || (isAluno(a) && resource.data.studentId == sid(a)));
+        allow read: if notBlocked(a) && (isStaff(a) || ownOrDependent(a, resource.data.studentId));
         allow write: if isProf(a) && notBlocked(a) && stamped();
-        allow update: if isAluno(a) && notBlocked(a) && stamped() && resource.data.studentId == sid(a)
+        allow update: if isAluno(a) && notBlocked(a) && stamped() && ownOrDependent(a, resource.data.studentId)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['progress','_srv','_by'])
           && request.resource.data.progress is map;
       }
 
       match /students/{id} {
-        allow get: if notBlocked(a) && (isStaff(a) || (isAluno(a) && id == sid(a)));
+        allow get: if notBlocked(a) && (isStaff(a) || ownOrDependent(a, id));
         allow list: if isStaff(a) && notBlocked(a);
         allow write: if isProf(a) && notBlocked(a) && stamped();
       }
@@ -177,7 +196,7 @@ service cloud.firestore {
 
       match /{store}/{id} {
         allow read: if notBlocked(a) && store in ['gradingHistory','gradingReminders','pointsLedger','paymentStatus']
-          && (isStaff(a) || (isAluno(a) && resource.data.studentId == sid(a)));
+          && (isStaff(a) || ownOrDependent(a, resource.data.studentId));
         allow write: if isProf(a) && notBlocked(a) && stamped()
           && store in ['gradingHistory','gradingReminders','pointsLedger','paymentStatus'];
       }
@@ -195,7 +214,7 @@ service cloud.firestore {
 
       match /notifications/{id} {
         allow read: if notBlocked(a) && (isStaff(a) || (isAluno(a)
-          && (resource.data.targetStudentId == sid(a) || resource.data.targetRole == 'aluno')));
+          && (ownOrDependent(a, resource.data.targetStudentId) || resource.data.targetRole == 'aluno')));
         allow write: if isStaff(a) && notBlocked(a) && stamped();
       }
     }
