@@ -1,5 +1,5 @@
-const CACHE="tonicao-v0.22.0";
-const ASSETS=["./","./index.html","./manifest.json","./icon-192.png","./icon-512.png"];
+const CACHE="tonicao-v0.25.0";
+const ASSETS=["./", "./index.html", "./assets/icon-192.png", "./assets/icon-512.png", "./manifest.json", "./vendor/qrcode-bundle.js", "./assets/logo-tonicao.jpg", "./assets/exame-faixa-azul-2026.pdf", "./assets/exame-faixa-roxa-2026.pdf", "./assets/exame-faixa-marrom-2026.pdf", "./assets/exame-faixa-preta-2026.pdf", "./assets/institucional-sistema-pontuacao.jpg", "./assets/institucional-etiqueta-dojo.jpg", "./assets/referencia-graduacao-ibjjf.jpg", "./assets/galeria-retratos-ct-01.jpg", "./assets/galeria-retratos-ct-02.jpg", "./assets/galeria-retrato-ct-03.jpg", "./assets/identidade-lutar-e-crescer.jpg", "./assets/identidade-fernando-carvalho-bjj.jpg", "./assets/institucional-regras-ct.jpg"];
 // v0.21: API e outros domínios NUNCA passam pelo cache; HTML/JS/CSS buscam a versão nova primeiro.
 self.addEventListener("install",e=>{
   e.waitUntil(caches.open(CACHE).then(c=>Promise.all(ASSETS.map(a=>c.add(a).catch(()=>null)))));
@@ -10,7 +10,7 @@ self.addEventListener("fetch",e=>{
   const req=e.request;
   if(req.method!=="GET")return;
   const url=new URL(req.url);
-  if((url.origin==="https://www.gstatic.com"&&url.pathname.startsWith("/firebasejs/"))||url.origin==="https://cdnjs.cloudflare.com"){ // SDK do Firebase: guardado para abrir sem internet
+  if(url.origin==="https://www.gstatic.com"&&url.pathname.startsWith("/firebasejs/")){ // SDK do Firebase: guardado para abrir sem internet
     e.respondWith(caches.match(req).then(c=>c||fetch(req).then(r=>{if(r.ok){const cp=r.clone();caches.open(CACHE).then(x=>x.put(req,cp))}return r})));return;
   }
   if(url.origin!==self.location.origin)return;                 // Firestore, login Google etc. sempre direto
