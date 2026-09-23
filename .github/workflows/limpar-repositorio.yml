@@ -1,0 +1,37 @@
+name: Limpar repositorio
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  limpar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apagar arquivos que nao sao mais usados
+        run: |
+          rm -rf github server
+          rm -f .github/workflows/apply-v032.yml
+          rm -f apply_v032.py apply_v027.py
+          rm -f render-production.yaml render-test.yaml
+          rm -f permissions.js test.js LEIA-PERMISSOES.md
+          rm -f regras-firestore-v032.txt
+          rm -f icon-192.png icon-512.png
+          echo "--- o que sobrou ---"
+          ls -1
+      - name: Conferir se o app continua completo
+        run: |
+          for f in index.html sw.js manifest.json features-v032-family.js regras-firestore.txt platform.html vendor/qrcode-bundle.js assets/logo-tonicao.jpg; do
+            test -f "$f" || { echo "FALTANDO: $f"; exit 1; }
+          done
+          echo "App completo."
+      - name: Salvar
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git diff --cached --quiet && echo "Nada para limpar." || git commit -m "Limpeza: remove arquivos do servidor Render e scripts ja aplicados"
+          git push
