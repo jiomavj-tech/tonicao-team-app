@@ -1,0 +1,29 @@
+name: Publicar regras do Firestore
+
+on:
+  push:
+    branches: [main]
+    paths: ["regras-firestore.txt"]
+  workflow_dispatch:
+
+jobs:
+  regras:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Preparar arquivos
+        run: |
+          cp regras-firestore.txt firestore.rules
+          printf '{"firestore":{"rules":"firestore.rules"}}' > firebase.json
+      - name: Autenticar no Firebase
+        run: |
+          cat > /home/runner/key.json << 'JSON'
+          ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          JSON
+      - name: Publicar regras
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /home/runner/key.json
+        run: npx -y firebase-tools@13 deploy --only firestore:rules --project tonicao-sul-ilha --non-interactive
