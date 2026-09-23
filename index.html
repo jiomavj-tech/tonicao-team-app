@@ -363,7 +363,7 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.40</p>
+        <p id="topSubtitle">Piloto offline-first • v0.41</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -2948,10 +2948,46 @@ async function savePlanEditor(planId=""){
   closeModal();toast("Plano de graduação salvo.");renderGraduation()
 }
 
+// v0.41: quantidade separada do nome, com − e +.
+function splitReq(text){
+  const m=String(text||"").trim().match(/^(\d+)\s+(.*)$/);
+  if(!m)return {qty:1,name:String(text||"").trim()};
+  return {qty:Math.max(1,+m[1]||1),name:m[2].trim()};
+}
+function joinReq(qty,name){return `${Math.max(1,qty)} ${name}`.trim()}
+
 async function showPlanChecklist(planId){
   const p=await DB.getOne("gradingPlans",planId),techs=await DB.getAll("techniques"),links=p.links||{};
-  showModal(`<div class="exam-title">${p.name}</div><p class="small muted">Professor: vincule uma técnica da Biblioteca a cada item.</p><div class="checklist">${p.practical.map((x,i)=>{const linked=(links["p"+i]||[]).map(id=>techs.find(t=>t.id===id)).filter(Boolean);return `<div class="check-item"><div style="flex:1"><strong>${x}</strong><div class="small muted">${linked.length?"Vinculado: "+linked.map(t=>t.title).join(", "):"Sem vídeo vinculado"}</div><button class="mini-btn" onclick="linkTechniqueModal('${planId}',${i})">Vincular técnica</button></div></div>`}).join("")}</div><button class="btn secondary full" style="margin-top:14px" onclick="closeModal()">Fechar</button>`)
+  const emCurso=(await DB.getAll("gradingAssignments")).filter(a=>a.planId===planId&&a.status!=="done").length;
+  showModal(`<div class="exam-title">${esc(p.name)}</div>
+    <p class="small muted">Ajuste a quantidade de cada item e vincule um vídeo da Biblioteca.</p>
+    <div class="checklist">${p.practical.map((x,i)=>{
+      const {qty,name}=splitReq(x);
+      const linked=(links["p"+i]||[]).map(id=>techs.find(t=>t.id===id)).filter(Boolean);
+      return `<div class="check-item"><div style="flex:1">
+        <strong>${esc(name)}</strong>
+        <div style="display:flex;align-items:center;gap:10px;margin:8px 0">
+          <button class="mini-btn" onclick="changeReqQty('${planId}',${i},-1)" ${qty<=1?"disabled":""}>−</button>
+          <span class="pill">${qty}×</span>
+          <button class="mini-btn" onclick="changeReqQty('${planId}',${i},1)">+</button>
+        </div>
+        <div class="small muted">${linked.length?"Vinculado: "+esc(linked.map(t=>t.title).join(", ")):"Sem vídeo vinculado"}</div>
+        <button class="mini-btn" onclick="linkTechniqueModal('${planId}',${i})">Vincular técnica</button>
+      </div></div>`}).join("")}</div>
+    <div class="notice small" style="margin-top:12px"><strong>⭐ Esta é a lista oficial da faixa ${esc(p.targetBelt)}</strong>
+      <div class="small">O que você mudar aqui vale para todas as próximas graduações desta faixa${emCurso?`, e também para ${emCurso} exame(s) em andamento`:""}.</div></div>
+    <button class="btn secondary full" style="margin-top:8px" onclick="closeModal()">Fechar</button>`)
 }
+window.changeReqQty=async function(planId,index,delta){
+  if(!(await guard("manage_graduation")))return;
+  const p=await DB.getOne("gradingPlans",planId);if(!p)return;
+  const {qty,name}=splitReq(p.practical[index]);
+  const novo=Math.max(1,Math.min(99,qty+delta));
+  p.practical[index]=joinReq(novo,name);
+  await DB.put("gradingPlans",p);
+  showPlanChecklist(planId);
+};
+
 async function linkTechniqueModal(planId,index){
   const techs=await DB.getAll("techniques"),p=await DB.getOne("gradingPlans",planId),current=(p.links?.["p"+index]||[])[0]||"";
   showModal(`<h3>Vincular técnica</h3><p><strong>${p.practical[index]}</strong></p><div class="field"><label>Biblioteca Técnica</label><select id="linkTech"><option value="">Sem vínculo</option>${techs.map(t=>`<option value="${t.id}" ${t.id===current?"selected":""}>${t.title} • ${t.level}</option>`).join("")}</select></div><button class="btn primary full" onclick="saveTechniqueLink('${planId}',${index})">Salvar vínculo</button>`)
@@ -4319,12 +4355,12 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.40`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.41`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
-// v0.40: só redesenha a tela quando a pessoa não está no meio de alguma coisa.
+// v0.41: só redesenha a tela quando a pessoa não está no meio de alguma coisa.
 let syncRedrawPending=false;
 function userIsBusy(){
   if(document.getElementById("qrFull"))return true;                     // QR em tela cheia
