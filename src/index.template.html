@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111111">
+  <title>Tonicão Team Sul da Ilha</title>
+  <link rel="manifest" href="./manifest.json">
+  <style>
+{{STYLES}}
+</style>
+
+</head>
+<body>
+  <div id="authGate" class="auth-gate">
+    <div class="auth-card">
+      <img src="./assets/logo-tonicao.jpg" alt="Logo" class="auth-logo">
+      <div id="authGateContent"></div>
+    </div>
+  </div>
+  <div id="academyBlockGate" class="academy-block-gate">
+    <div class="academy-block-card" id="academyBlockContent"></div>
+  </div>
+  <div class="toast" id="toast"></div>
+  <div class="app-shell">
+    <header class="topbar">
+      <button id="globalBackBtn" class="top-back" onclick="appBack()" aria-label="Voltar" title="Voltar">←</button>
+      <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
+      <div class="brand">
+        <h1>Tonicão Team Sul da Ilha</h1>
+        <p id="topSubtitle">Piloto offline-first • v0.32</p>
+      </div>
+      <div class="spacer"></div>
+      <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
+        style="display:none;border:0;background:rgba(255,255,255,.15);color:inherit;border-radius:999px;width:40px;height:40px;font-size:20px;cursor:pointer;flex:0 0 auto">👤</button>
+      <select id="roleSelect" class="role-toggle" aria-label="Perfil" style="display:none">
+        <option value="professor">Professor</option>
+        <option value="aluno">Aluno</option>
+      </select>
+    </header>
+
+    <main>
+      <section id="home" class="page active"></section>
+      <section id="checkin" class="page"></section>
+      <section id="students" class="page"></section>
+      <section id="graduation" class="page"></section>
+      <section id="more" class="page"></section>
+    </main>
+  </div>
+
+  <nav class="nav">
+    <button data-page="home" class="active"><span class="nav-ico">⌂</span>Início</button>
+    <button data-page="checkin"><span class="nav-ico">✓</span>Check-in</button>
+    <button data-page="students"><span class="nav-ico">👥</span>Alunos</button>
+    <button data-page="graduation"><span class="nav-ico">🥋</span>Graduação</button>
+    <button data-page="more"><span class="nav-ico">☰</span>Mais</button>
+  </nav>
+
+  <div id="modal" class="modal-backdrop">
+    <div class="modal" id="modalContent"></div>
+  </div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="./vendor/qrcode-bundle.js"></script>
+<script>/* ===== qrcode-adapter.js ===== */
+{{MOD:qrcode-adapter.js}}</script>
+
+<script>/* ===== config.js ===== */
+{{MOD:config.js}}</script>
+
+<script>/* ===== db.js ===== */
+{{MOD:db.js}}</script>
+<script>/* ===== sync.js ===== */
+{{MOD:sync.js}}</script>
+<script>/* ===== auth.js ===== */
+{{MOD:auth.js}}</script>
+<script>/* ===== remote-auth.js ===== */
+{{MOD:remote-auth.js}}</script>
+<script>/* ===== remote-sync.js ===== */
+{{MOD:remote-sync.js}}</script>
+<script>/* ===== google-auth.js ===== */
+{{MOD:google-auth.js}}</script>
+<script>/* ===== notifications-client.js ===== */
+{{MOD:notifications-client.js}}</script>
+<script>/* ===== app.js ===== */
+{{MOD:app.js}}</script>
+<script>/* ===== extras-v030.js ===== */
+{{MOD:extras-v030.js}}</script>
+<script>/* ===== features-v031.js ===== */
+{{MOD:features-v031.js}}</script>
+<script src="./features-v032-family.js"></script>
+<script>/* ===== help.js ===== */
+{{MOD:help.js}}</script>
+<script>/* ===== v024-features.js ===== */
+{{MOD:v024-features.js}}</script>
+<script>/* ===== demo-mode.js ===== */
+{{MOD:demo-mode.js}}</script>
+</body>
+</html>

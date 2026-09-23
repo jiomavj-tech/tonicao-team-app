@@ -1,3 +1,4 @@
+/* ===== auth.js ===== */
 const TonicaoAuth=(()=>{
   const ROLE_LABEL={admin:"Administrador/Dono",professor:"Professor",aluno:"Aluno"};
   const ACADEMIC_PERMS=new Set(["manage_students","attendance","manage_graduation","manage_points","manage_events","manage_techniques","payments","approve_students"]);

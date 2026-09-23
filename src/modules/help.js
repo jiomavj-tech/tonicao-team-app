@@ -1,5 +1,6 @@
+/* ===== help.js ===== */
 /* =====================================================================
-   Tonicão Team — Ajuda "?" (v0.23)
+   Tonicão Team — Ajuda "?" (v0.25)
    Botão flutuante que explica a tela atual, passo a passo, com o porquê
    de cada ação. Também abre o manual completo do perfil logado.
    Não altera dados: só lê a tela atual e o perfil do usuário.
@@ -11,15 +12,15 @@
   const LOGIN = {
     title: "Entrar no aplicativo",
     steps: [
-      ["Primeiro acesso: crie a conta de Administrador/Dono com nome, usuário e senha.",
+      ["Primeiro acesso: toque em \"Primeira configuração da academia (Dono)\", lá embaixo, e crie a conta com nome, e-mail e senha.",
        "O Dono é quem cria as contas dos professores e controla o acesso da academia. Só existe um."],
       ["A senha precisa ter 9 caracteres ou mais, com letra MAIÚSCULA, letra minúscula, número e símbolo (. ! @ #), em qualquer ordem.",
        "Senha longa e variada é muito mais difícil de adivinhar. Evite nome e data de nascimento."],
-      ["Já tem conta? Digite usuário e senha e toque em Entrar.",
+      ["Já tem conta? Digite seu e-mail e senha e toque em Entrar. Esqueceu a senha? Toque em \"Esqueci a senha\" e confira seu e-mail.",
        "Cada pessoa usa a própria conta — assim o app sabe o que ela pode ver e fazer."],
       ["Aluno novo sem conta: toque em \"Quero me cadastrar como aluno\".",
        "O cadastro vai para o professor aprovar. Ninguém entra na academia sem aprovação."],
-      ["Botão do Google: aparece quando o servidor estiver publicado e configurado.",
+      ["Botão do Google: a conta nova fica aguardando até o Professor ou o Dono liberar e vincular à ficha do aluno.",
        "Com Google, o aluno não precisa decorar senha — e a conta dele já é verificada pelo Google."]
     ]
   };
@@ -234,8 +235,8 @@
          "Você resolve na hora, sem perder histórico."],
         ["\"Desativar\" bloqueia o login sem apagar nada.",
          "Se a pessoa voltar, é só reativar — o histórico continua lá."],
-        ["Com o servidor conectado, \"+ Novo usuário\" cria a conta no aparelho e no servidor de uma vez. Se aparecer \"Servidor não conectado\", toque em \"Conectar ao servidor\" e entre como Administrador remoto.",
-         "A conta do servidor é a que deixa a pessoa entrar de qualquer celular, com os dados sincronizados."],
+        ["\"+ Novo usuário\" cria a conta na nuvem (Firebase) com e-mail e senha. A pessoa já pode entrar em qualquer celular.",
+         "Para trocar de pessoa no mesmo celular, toque no 👤 no alto da tela → Trocar de conta."],
         ["\"Contas no servidor — avançado\" e \"+ Conta avançada\" são só para reparo.",
          "No dia a dia, o \"+ Novo usuário\" já resolve tudo."]
       ]

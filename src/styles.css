@@ -324,3 +324,7 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
 .ready-approval{border-left:6px solid #16a34a}
 .request-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px}
 .auth-card .field{ text-align:left }
+
+/* v0.25.1: janelas e avisos sempre acima da tela de entrada */
+.modal-backdrop{z-index:2000!important}
+.toast{z-index:3000!important}

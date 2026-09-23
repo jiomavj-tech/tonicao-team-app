@@ -1,4 +1,8 @@
-const DB_NAME = "tonicao_app";
+/* ===== db.js ===== */
+const __TENANT_DB_SUFFIX=String(window.TONICAO_ACADEMY_ID||"tonicao-sul-ilha").replace(/[^a-z0-9_-]/g,"-");
+const DB_NAME=window.TONICAO_DEMO
+  ? (__TENANT_DB_SUFFIX==="tonicao-sul-ilha" ? "tonicao_demo" : "tonicao_demo_"+__TENANT_DB_SUFFIX)
+  : (__TENANT_DB_SUFFIX==="tonicao-sul-ilha" ? "tonicao_app" : "tonicao_app_"+__TENANT_DB_SUFFIX); // v0.27: um IndexedDB por academia
 
 /* v0.21 — Proteção contra injeção de HTML/JS.
    Todo texto gravado no banco passa por cleanValue():
@@ -21,7 +25,7 @@ function cleanValue(value,key=""){
   }
   return value; // Blob, Date, números etc. ficam como estão
 }
-const DB_VERSION = 13;
+const DB_VERSION = 14; // v0.28: grade de horários e reservas
 
 const STORE_DEFS = [
   ["students","id"], ["classSessions","id"], ["attendance","id"],
@@ -30,13 +34,13 @@ const STORE_DEFS = [
   ["techniques","id"], ["notifications","id"], ["paymentStatus","id"],
   ["documents","id"], ["settings","id"], ["academies","id"], ["devices","id"],
   ["invites","id"], ["syncLog","id"], ["academyContent","id"], ["timerPresets","id"],
-  ["sequenceRules","id"], ["syncQueue","id"], ["syncMeta","id"], ["users","id"], ["authSession","id"], ["auditLog","id"], ["academyTimeline","id"], ["academyGallery","id"], ["reportPresets","id"], ["remoteAuth","id"], ["registrationRequests","id"], ["academyRules","id"], ["scoreRules","id"], ["referenceMaterials","id"]
+  ["sequenceRules","id"], ["syncQueue","id"], ["syncMeta","id"], ["users","id"], ["authSession","id"], ["auditLog","id"], ["academyTimeline","id"], ["academyGallery","id"], ["reportPresets","id"], ["remoteAuth","id"], ["registrationRequests","id"], ["academyRules","id"], ["scoreRules","id"], ["referenceMaterials","id"], ["classSchedule","id"], ["classBookings","id"]
 ];
 
 const SYNCABLE_STORES = new Set([
   "students","classSessions","attendance","gradingHistory","gradingPlans",
   "gradingAssignments","gradingReminders","pointsLedger","events","techniques",
-  "notifications","paymentStatus","academyContent","timerPresets","sequenceRules","users","auditLog","academyTimeline","academyGallery","registrationRequests","academyRules","scoreRules","referenceMaterials"
+  "notifications","paymentStatus","academyContent","timerPresets","sequenceRules","users","auditLog","academyTimeline","academyGallery","registrationRequests","academyRules","scoreRules","referenceMaterials","classSchedule","classBookings"
 ]);
 
 let __dbPromise=null;

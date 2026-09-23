@@ -1,3 +1,4 @@
+/* ===== notifications-client.js ===== */
 const TonicaoNotifications=(()=>{
   let interval=null,syncing=false;
   async function settings(){return (await DB.getOne("settings","app"))||{id:"app"}}

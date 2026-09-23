@@ -1,3 +1,4 @@
+/* ===== v024-features.js ===== */
 /* Tonicão Team v0.24
    Compartilhamento + Modo Apresentação + Cadastro unificado local/remoto
    Camada complementar: não altera o modelo de dados acadêmicos existente.
@@ -33,7 +34,9 @@
 
   async function shareApplication(){
     const name = await academyName();
-    const url = publicAppUrl();
+    const base = publicAppUrl();
+    let url=base;
+    try{const u=new URL(base,location.href);u.search="";u.searchParams.set("academy",window.TONICAO_ACADEMY_ID||"tonicao-sul-ilha");url=u.href}catch(_){}
     const data = {
       title: `${name} — aplicativo`,
       text: `Conheça o aplicativo da ${name}.`,
@@ -101,7 +104,7 @@
     const subtitle=$("#topSubtitle");
     if(!subtitle) return;
     const fix=()=>{
-      if(subtitle.textContent.includes("v0.23")) subtitle.textContent=subtitle.textContent.replace("v0.23","v0.24");
+      /* v0.25: versão já vem correta do app */
     };
     fix();
     new MutationObserver(fix).observe(subtitle,{childList:true,subtree:true,characterData:true});
@@ -340,24 +343,27 @@
     const students=await getStudents();
     const settings=await getSettings();
     const remoteReady=!!settings.cloudSessionToken && !!settings.remoteUser && navigator.onLine;
+    const fb=!!window.TonicaoFirebase?.configured;
 
     showModal(`<h3>Novo usuário</h3>
       <div class="v024-unified-status ${remoteReady?"ok":"warn"}">
         <strong>${remoteReady?"✅ Cadastro unificado ativo":"⚠️ Servidor não conectado"}</strong>
-        <span class="small">${remoteReady?"Esta ação criará a conta neste aparelho e no servidor.":"Entre no servidor para criar a conta completa em uma única etapa."}</span>
+        <span class="small">${remoteReady?(fb?"A conta é criada na nuvem: a pessoa entra com esse e-mail e senha em qualquer celular.":"Esta ação criará a conta neste aparelho e no servidor."):"Entre no servidor para criar a conta completa em uma única etapa."}</span>
       </div>
       <div class="field"><label>Nome</label><input id="usrName"></div>
-      <div class="field"><label>Usuário</label><input id="usrUsername" autocomplete="off"></div>
-      <div class="field"><label>Senha</label><input id="usrPass" type="password" autocomplete="new-password"></div>
+      <div class="field"><label>${fb?"E-mail":"Usuário"}</label><input id="usrUsername" autocomplete="off" ${fb?'type="email"':""}></div>
+      <div class="field"><label>Senha (9+ caracteres, maiúscula, minúscula, número e símbolo)</label><input id="usrPass" type="password" autocomplete="new-password"></div>
       <div class="field"><label>Perfil</label><select id="usrRole" onchange="toggleStudentUserField()">
         <option value="professor">Professor</option><option value="aluno">Aluno</option><option value="admin">Administrador/Dono</option>
       </select></div>
       <div class="field" id="usrStudentWrap" style="display:none"><label>Aluno vinculado</label><select id="usrStudent"><option value="">Selecione</option>${students.map(s=>`<option value="${s.id}">${esc024(s.name)}</option>`).join("")}</select></div>
       ${remoteReady
-        ? `<button class="btn primary full" onclick="saveUnifiedUser(false)">Criar usuário completo</button><p class="small muted" style="margin-top:8px">Uma única ação cria a conta local + remota com o mesmo usuário e perfil.</p>`
-        : `<button class="btn primary full" onclick="goToCloudFromUnified()">Conectar ao servidor</button>
-           <button class="btn secondary full" style="margin-top:8px" onclick="saveUnifiedUser(true)">Criar somente neste aparelho</button>
-           <p class="small muted" style="margin-top:8px">A segunda opção mantém o uso offline, mas a pessoa não conseguirá entrar em outro aparelho até a conta remota ser criada.</p>`
+        ? `<button class="btn primary full" onclick="saveUnifiedUser(false)">Criar usuário completo</button><p class="small muted" style="margin-top:8px">${fb?"A conta é criada uma única vez no Firebase e funciona nos outros aparelhos.":"Uma única ação cria a conta local + remota."}</p>`
+        : fb
+          ? `<button class="btn primary full" onclick="goToCloudFromUnified()">Entrar como Administrador/Dono</button>
+             <p class="small muted" style="margin-top:8px">Com Firebase não criamos uma segunda conta apenas neste aparelho. Conecte o Dono e faça um único cadastro.</p>`
+          : `<button class="btn primary full" onclick="goToCloudFromUnified()">Conectar ao servidor</button>
+             <button class="btn secondary full" style="margin-top:8px" onclick="saveUnifiedUser(true)">Criar somente neste aparelho</button>`
       }`);
   }
 
@@ -369,7 +375,11 @@
       const role=$("#usrRole")?.value||"professor";
       const studentId=$("#usrStudent")?.value||"";
       if(!name) throw new Error("Informe o nome.");
-      if(!username) throw new Error("Informe o usuário.");
+      if(!username) throw new Error(window.TonicaoFirebase?.configured?"Informe o e-mail.":"Informe o usuário.");
+      const fbMode=!!window.TonicaoFirebase?.configured;
+      if(localOnly&&fbMode)throw new Error("Com Firebase, conecte o Administrador e crie uma única conta completa.");
+      if(fbMode&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(username)) throw new Error("Digite um e-mail válido.");
+      {const prob=TonicaoAuth.passwordProblem?TonicaoAuth.passwordProblem(password):"";if(prob)throw new Error(prob)}
       if(role==="aluno" && !studentId) throw new Error("Selecione o aluno vinculado.");
 
       const locals=await (TonicaoAuth.allUsers?TonicaoAuth.allUsers():TonicaoAuth.users());
@@ -394,14 +404,14 @@
         }
       }
 
-      if(!localExisting){
+      if(!localExisting && !fbMode){ // com Firebase, a conta vale na nuvem; não precisa cópia local
         await TonicaoAuth.createUser({name,username,password,role,studentId});
       }
 
       closeModal();
       toast(localOnly
         ? "Conta criada neste aparelho. Falta a conta do servidor para uso em outros dispositivos."
-        : "Usuário criado no aparelho e no servidor.");
+        : (fbMode?"Conta criada. A pessoa já pode entrar com esse e-mail e senha.":"Usuário criado no aparelho e no servidor."));
       await renderMore("users");
     }catch(e){
       toast(e.message||"Falha ao criar usuário.");
@@ -413,7 +423,7 @@
     closeModal();
     goPage("more");
     await renderMore("cloud");
-    toast("Faça login como Administrador remoto e depois volte em Usuários e permissões.");
+    toast(window.TonicaoFirebase?.configured?"Saia e entre de novo com sua conta de Dono (e-mail e senha).":"Faça login como Administrador remoto e depois volte em Usuários e permissões.");
   }
   window.goToCloudFromUnified=goToCloudFromUnified;
 

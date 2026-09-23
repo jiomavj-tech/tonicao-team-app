@@ -1,3 +1,4 @@
+/* ===== app.js ===== */
 const APP_CONFIG=window.TONICAO_APP_CONFIG||{};
 const APP_MODE=APP_CONFIG.mode==="demo"?"demo":"production";
 function localISODate(d=new Date()){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0");return `${y}-${m}-${day}`}
@@ -101,7 +102,7 @@ const seed={
     {id:"s4",name:"Marcos Vieira",nickname:"Marcos",birth:"1995-02-12",phone:"",belt:"Branca",stripes:4,classesInBelt:98,targetClasses:120,streak:3,points:344,dueDay:10,payment:"pendente",active:true,photo:""}
   ],
   gradingPlans:[
-    {id:"gp-blue-2026",graduationTrack:"adulto",name:"Exame para Faixa Azul",targetBelt:"Azul",version:"2026",practical:EXAM_BLUE,theory:["Regras e pontuação","Conduta e segurança no tatame"],pdfAssetUrl:"./assets/exame-faixa-azul-2026.pdf",pdfDocId:"",links:{p2:["t2"],p9:["t1"]},active:true,pilot:true},
+    {id:"gp-blue-2026",graduationTrack:"adulto",name:"Exame para Faixa Azul",targetBelt:"Azul",version:"2026",practical:EXAM_BLUE,theory:[],pdfAssetUrl:"./assets/exame-faixa-azul-2026.pdf",pdfDocId:"",links:{p2:["t2"],p9:["t1"]},active:true,pilot:true},
     {id:"gp-purple-2026",graduationTrack:"adulto",name:"Exame para Faixa Roxa",targetBelt:"Roxa",version:"2026",practical:EXAM_PURPLE,theory:["Pontuação e vantagens","Estratégia básica de campeonato","Higiene, segurança e etiqueta no tatame"],pdfAssetUrl:"./assets/exame-faixa-roxa-2026.pdf",pdfDocId:"",links:{},active:true,pilot:true},
     {id:"gp-brown-2026",graduationTrack:"adulto",name:"Exame para Faixa Marrom",targetBelt:"Marrom",version:"2026",practical:EXAM_BROWN,theory:["Estratégia de luta","Arbitragem e leitura de combate","Postura como graduado"],pdfAssetUrl:"./assets/exame-faixa-marrom-2026.pdf",pdfDocId:"",links:{},active:true,pilot:true},
     {id:"gp-black-2026",name:"Exame para Faixa Preta",targetBelt:"Preta",graduationTrack:"adulto",version:"2026",practical:EXAM_BLACK,theory:["Didática e liderança","Segurança e responsabilidade na condução de treino","História, linhagem e arbitragem"],pdfAssetUrl:"./assets/exame-faixa-preta-2026.pdf",pdfDocId:"",links:{},active:true,pilot:true},
@@ -222,7 +223,7 @@ async function ensureDefaultV05Data(){
 }
 
 
-async function ensurePilotHistoryV08(){
+async function ensurePilotHistoryV08(){if(window.TonicaoFirebase?.configured)return;
   const settings=await getSettings();
   if((settings.academyId||"tonicao-sul-ilha")!=="tonicao-sul-ilha")return;
   const content=await DB.getOne("academyContent","main");
@@ -345,6 +346,33 @@ async function ensureRoleHierarchyV16(){
   settings.publicAppUrl=settings.publicAppUrl||"";
   await DB.put("settings",settings);
 }
+async function ensureV027Migrations(){
+  const settings=await getSettings();
+  if(settings.v027Migration)return;
+  const blue=await DB.getOne("gradingPlans","gp-blue-2026");
+  if(blue){
+    const old=Array.isArray(blue.theory)&&blue.theory.length===2&&blue.theory[0]==="Regras e pontuação"&&blue.theory[1]==="Conduta e segurança no tatame";
+    if(old){blue.theory=[];blue.theoryNote="Conteúdo teórico a definir pela academia.";await DB.rawPut("gradingPlans",blue)}
+  }
+  for(const r of await DB.getAll("sequenceRules")){
+    if(["seq-5","seq-10","seq-20"].includes(r.id)&&r.active!==false){
+      r.active=false;r.note="Desativado: não consta na tabela oficial de pontuação da unidade.";await DB.rawPut("sequenceRules",r)
+    }
+  }
+  settings.academyId=window.TONICAO_ACADEMY_ID||settings.academyId||"tonicao-sul-ilha";
+  settings.v027Migration=true;
+  await DB.rawPut("settings",settings);
+}
+function currentAcademyIdV027(){
+  return String(window.TONICAO_ACADEMY_ID||"tonicao-sul-ilha").replace(/[^a-z0-9_-]/g,"-")||"tonicao-sul-ilha"
+}
+function tenantUrlV027(base,params={}){
+  const u=new URL(base,location.href);
+  u.search="";u.hash="";
+  u.searchParams.set("academy",currentAcademyIdV027());
+  for(const [k,v] of Object.entries(params))if(v!==undefined&&v!==null&&v!=="")u.searchParams.set(k,String(v));
+  return u.href
+}
 function phoneForWhatsApp(phone){
   let d=String(phone||"").replace(/\D/g,"");
   if((d.length===10||d.length===11)&&!d.startsWith("55"))d="55"+d;
@@ -360,7 +388,7 @@ async function buildInviteShareData(student){
   const settings=await getSettings();
   const token=await TonicaoSync.buildInviteToken(student,settings);
   const base=await getPublicAppUrl();
-  const link=base?`${base}${base.includes("?")?"&":"?"}invite=${encodeURIComponent(token)}`:"";
+  const link=base?tenantUrlV027(base,{invite:token}):"";
   const academy=settings.academyName||settings.academy||"academia";
   const text=`Olá, ${student.name}! Você foi cadastrado na ${academy}. ${link?`Acesse o aplicativo: ${link}`:`Use o convite abaixo no aplicativo:`}${link?"":`\n\n${token}`}`;
   return {token,link,text}
@@ -379,12 +407,9 @@ async function shareStudentInvite(studentId){
 
 function localInviteToken(){return crypto?.randomUUID?.()||(`invite-${Date.now()}-${Math.random().toString(36).slice(2)}`)}
 async function buildCompletionLink(request){
-  const settings=await getSettings(),base=await getPublicAppUrl();
+  const base=await getPublicAppUrl();
   if(!base)return "";
-  const q=new URLSearchParams();
-  q.set("complete",request.inviteToken);
-  q.set("academy",settings.academyId||APP_CONFIG.academyId||"tonicao-sul-ilha");
-  return `${base}${base.includes("?")?"&":"?"}${q.toString()}`
+  return tenantUrlV027(base,{complete:request.inviteToken})
 }
 async function inviteMessageForRequest(request){
   const settings=await getSettings(),link=await buildCompletionLink(request);
@@ -407,16 +432,19 @@ async function shareRegistrationInvite(requestId){
 async function shareSelfRegistrationLink(){
   const settings=await getSettings(),base=await getPublicAppUrl();
   if(!base){toast("O Administrador/Dono precisa configurar o link público do aplicativo.");return}
-  const link=`${base}${base.includes("?")?"&":"?"}join=${encodeURIComponent(settings.academyId||"academia")}`;
+  const link=tenantUrlV027(base,{join:"1"});
   const text=`Faça seu pré-cadastro na ${settings.academyName||"academia"}: ${link}`;
   if(navigator.share){try{await navigator.share({title:"Cadastro na academia",text,url:link});return}catch(e){}}
   await navigator.clipboard?.writeText(link);toast("Link de auto-cadastro copiado.")
 }
 
-function inviteServerFromUrl(){return officialApiBase()}
+function inviteServerFromUrl(){return new URLSearchParams(location.search).get("server")||(window.TonicaoFirebase?.configured?"firebase":"")}
 async function findInviteByToken(token){
   const local=(await DB.getAll("registrationRequests")).find(r=>r.inviteToken===token);
-  if(local)return local;
+  if(local){
+    if(local.status==="invited"&&Number(local.expiresAtMs||0)>0&&Date.now()>Number(local.expiresAtMs))return {...local,status:"expired"};
+    return local
+  }
   const endpoint=inviteServerFromUrl();
   if(endpoint&&navigator.onLine){
     try{
@@ -448,6 +476,10 @@ async function renderStudentCompletionGate(token){
     host.innerHTML=`<h2>Cadastro não aprovado</h2><p>Entre em contato com o Professor para verificar seu cadastro.</p>`;
     return false
   }
+  if(r.status==="expired"){
+    host.innerHTML=`<h2>Convite vencido</h2><div class="notice payment"><strong>Este link expirou.</strong><div class="small">Por segurança, peça ao Professor um novo convite de cadastro.</div></div>`;
+    return false
+  }
   if(["awaiting_approval","pending"].includes(r.status)){
     host.innerHTML=`<h2>Cadastro enviado</h2><div class="notice grade"><strong>⏳ Aguardando confirmação do Professor</strong><div class="small">Seus dados já foram enviados. O Professor precisa apenas confirmar.</div></div><p><strong>${r.name}</strong><br>${r.phone||""}</p><button class="btn secondary full" onclick="refreshCompletionStatus('${token}')">Atualizar status</button>`;
     return false
@@ -470,6 +502,7 @@ async function renderStudentCompletionGate(token){
     <div class="field"><label>Contato de emergência</label><input id="icEmergencyName" value="${r.emergencyName||""}" placeholder="Nome"></div>
     <div class="field"><label>Telefone de emergência</label><input id="icEmergencyPhone" inputmode="tel" value="${r.emergencyPhone||""}"></div>
     <div class="field"><label>Observação</label><textarea id="icNote" placeholder="Alguma informação importante para o Professor">${r.note||""}</textarea></div>
+    <label class="notice" style="display:block"><input id="icPrivacyConsent" type="checkbox" style="margin-right:8px"> Autorizo o uso destes dados para cadastro, comunicação, presença, graduação e gestão da academia, conforme a política de privacidade.</label>
     <button class="btn primary full" onclick="submitInvitedStudentCompletion('${token}')">Enviar para confirmação do Professor</button>`;
   return false
 }
@@ -481,14 +514,19 @@ async function submitInvitedStudentCompletion(token){
   const name=document.getElementById("icName").value.trim(),phone=document.getElementById("icPhone").value.trim(),birth=document.getElementById("icBirth").value;
   if(!name||!phone||!birth){toast("Preencha nome, telefone e data de nascimento.");return}
   const track=document.getElementById("icTrack").value;
+  if(!document.getElementById("icPrivacyConsent")?.checked){toast("Confirme o consentimento de privacidade para continuar.");return}
+  const gName=track==="kids"?document.getElementById("icGuardianName").value.trim():"";
+  const gPhone=track==="kids"?document.getElementById("icGuardianPhone").value.trim():"";
+  if(track==="kids"&&(!gName||!gPhone)){toast("Para Kids, informe nome e telefone do responsável.");return}
+  const consentAt=new Date().toISOString();
   const payload={
     name,phone,email:document.getElementById("icEmail").value.trim(),birth,
     graduationTrack:track,belt:document.getElementById("icBelt").value,stripes:Number(document.getElementById("icStripes").value||0),
-    guardianName:track==="kids"?document.getElementById("icGuardianName").value.trim():"",
-    guardianPhone:track==="kids"?document.getElementById("icGuardianPhone").value.trim():"",
+    guardianName:gName,
+    guardianPhone:gPhone,
     emergencyName:document.getElementById("icEmergencyName").value.trim(),
     emergencyPhone:document.getElementById("icEmergencyPhone").value.trim(),
-    note:document.getElementById("icNote").value.trim()
+    note:document.getElementById("icNote").value.trim(),privacyConsentAt:consentAt,guardianConsentAt:track==="kids"?consentAt:""
   };
   const endpoint=inviteServerFromUrl();
   let req=await findInviteByToken(token);
@@ -511,30 +549,42 @@ async function refreshCompletionStatus(token){
   await renderStudentCompletionGate(token)
 }
 function clearCompletionLink(){
-  const u=new URL(location.href);u.searchParams.delete("complete");u.searchParams.delete("academy");history.replaceState(null,"",u.pathname+(u.search||"")+u.hash);location.reload()
+  const u=new URL(location.href);u.searchParams.delete("complete");history.replaceState(null,"",u.pathname+(u.search||"")+u.hash);location.reload()
 }
 
 async function studentSelfRegistrationModal(){
-  const settings=await getSettings();
   showModal(`<h3>Quero me cadastrar</h3><p class="small muted">Envie seus dados. O Professor precisa aprovar antes da liberação do cadastro.</p>
     <div class="field"><label>Nome completo</label><input id="srName"></div>
     <div class="field"><label>Telefone / WhatsApp</label><input id="srPhone" inputmode="tel" placeholder="(48) 99999-9999"></div>
     <div class="field"><label>Data de nascimento</label><input id="srBirth" type="date"></div>
-    <div class="field"><label>Trilha</label><select id="srTrack"><option value="adulto">Adulto</option><option value="kids">Kids</option></select></div>
+    <div class="field"><label>Trilha</label><select id="srTrack" onchange="toggleSelfRegGuardianV027()"><option value="adulto">Adulto</option><option value="kids">Kids</option></select></div>
+    <div id="srGuardianWrap" style="display:none">
+      <div class="field"><label>Nome do responsável</label><input id="srGuardianName"></div>
+      <div class="field"><label>Telefone do responsável</label><input id="srGuardianPhone" inputmode="tel"></div>
+    </div>
     <div class="field"><label>Observação</label><textarea id="srNote" placeholder="Opcional"></textarea></div>
+    <label class="notice" style="display:block"><input id="srPrivacyConsent" type="checkbox" style="margin-right:8px"> Autorizo o uso destes dados para o pré-cadastro e gestão da academia. Para Kids, esta confirmação deve ser feita pelo responsável.</label>
     <button class="btn primary full" onclick="submitStudentRegistration()">Enviar para o Professor</button>`)
 }
+function toggleSelfRegGuardianV027(){
+  const wrap=document.getElementById("srGuardianWrap");if(wrap)wrap.style.display=document.getElementById("srTrack")?.value==="kids"?"block":"none"
+}
 async function submitStudentRegistration(){
-  const name=document.getElementById("srName").value.trim(),phone=document.getElementById("srPhone").value.trim();
-  if(!name||!phone){toast("Informe nome e telefone.");return}
-  const settings=await getSettings();
-  const req={id:uid("reg"),academyId:settings.academyId||"tonicao-sul-ilha",name,phone,birth:document.getElementById("srBirth").value,graduationTrack:document.getElementById("srTrack").value,note:document.getElementById("srNote").value.trim(),status:"pending",source:"self",createdAt:new Date().toISOString()};
+  const name=document.getElementById("srName").value.trim(),phone=document.getElementById("srPhone").value.trim(),birth=document.getElementById("srBirth").value;
+  if(!name||!phone||!birth){toast("Informe nome, telefone e data de nascimento.");return}
+  if(!document.getElementById("srPrivacyConsent")?.checked){toast("Confirme o consentimento de privacidade para continuar.");return}
+  const track=document.getElementById("srTrack").value;
+  const guardianName=track==="kids"?document.getElementById("srGuardianName").value.trim():"";
+  const guardianPhone=track==="kids"?document.getElementById("srGuardianPhone").value.trim():"";
+  if(track==="kids"&&(!guardianName||!guardianPhone)){toast("Para Kids, informe nome e telefone do responsável.");return}
+  const consentAt=new Date().toISOString(),settings=await getSettings();
+  const req={id:uid("reg"),academyId:settings.academyId||currentAcademyIdV027(),name,phone,birth,graduationTrack:track,guardianName,guardianPhone,note:document.getElementById("srNote").value.trim(),privacyConsentAt:consentAt,guardianConsentAt:track==="kids"?consentAt:"",status:"pending",source:"self",createdAt:new Date().toISOString()};
   try{
-    if(settings.cloudEndpoint&&navigator.onLine){
-      const remote=await TonicaoRemoteAuth.submitRegistrationRequest({name:req.name,phone:req.phone,birth:req.birth,graduationTrack:req.graduationTrack,note:req.note});
+    if((settings.cloudEndpoint||window.TonicaoFirebase?.configured)&&navigator.onLine){
+      const remote=await TonicaoRemoteAuth.submitRegistrationRequest(req);
       if(remote?.request?.id)req.remoteId=remote.request.id;
     }
-  }catch(e){}
+  }catch(e){toast(e.message||"Não foi possível enviar agora. O pedido ficou salvo neste aparelho.")}
   await DB.put("registrationRequests",req);
   await createTargetedNotification("registration",`Novo pré-cadastro: ${name}`,`${phone} enviou uma solicitação para entrar na academia.`,{targetRole:"professor",refId:req.id});
   closeModal();toast("Pré-cadastro enviado. Aguarde a aprovação do Professor.")
@@ -556,7 +606,7 @@ async function approveRegistrationRequest(requestId){
   const student={
     id:uid("s"),name:r.name,nickname:r.name.split(" ")[0],phone:r.phone||"",email:r.email||"",birth:r.birth||"",
     graduationTrack:track,belt,stripes:Number(r.stripes||0),classesInBelt:0,targetClasses:targetClassesFor(track,belt),streak:0,points:0,
-    guardianName:r.guardianName||"",guardianPhone:r.guardianPhone||"",emergencyName:r.emergencyName||"",emergencyPhone:r.emergencyPhone||"",
+    guardianName:r.guardianName||"",guardianPhone:r.guardianPhone||"",emergencyName:r.emergencyName||"",emergencyPhone:r.emergencyPhone||"",privacyConsentAt:r.privacyConsentAt||"",guardianConsentAt:r.guardianConsentAt||"",
     dueDay:10,payment:"verificar",active:true,photo:"",registrationRequestId:r.id,note:r.note||""
   };
   await DB.put("students",student);
@@ -786,19 +836,39 @@ async function startQrScanner(studentId){
   showModal(`<h3>Ler QR da aula</h3><video id="qrVideo" autoplay playsinline class="qr-video"></video><p class="small muted">Aponte para o QR exibido no celular do professor.</p><button class="btn secondary full" onclick="closeModal()">Cancelar</button>`);
   try{qrStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});const v=document.getElementById("qrVideo");v.srcObject=qrStream;await v.play();const detector=new BarcodeDetector({formats:["qr_code"]});const tick=async()=>{if(!qrStream)return;try{const codes=await detector.detect(v);if(codes[0]?.rawValue){const value=codes[0].rawValue.trim();closeModal();await studentCheckinByCode(studentId,value);return}}catch{}qrTimer=setTimeout(tick,350)};tick()}catch(e){closeModal();toast("Não foi possível abrir a câmera.")}
 }
+async function awardAttendanceEffectsV027(studentId,sessionId,attendanceId){
+  const ledgerId=`pts-att-${attendanceId}`;
+  if(await DB.getOne("pointsLedger",ledgerId))return false;
+  const s=await DB.getOne("students",studentId);if(!s)return false;
+  const pts=await scoreBaseRule("score-base-attendance",5);
+  await DB.put("pointsLedger",{id:ledgerId,studentId,date:todayISO(),type:"presenca",points:pts,note:`Presença no treino (+${pts})`,sessionId,attendanceId,ruleId:"score-base-attendance"});
+  s.classesInBelt=(s.classesInBelt||0)+1;s.streak=(s.streak||0)+1;s.points=(s.points||0)+pts;
+  await applySequenceBonuses(s);await DB.put("students",s);
+  const rem=(await DB.getAll("gradingReminders")).find(r=>r.studentId===studentId&&r.status==="active"&&r.mode==="classes"&&r.remaining>0);
+  if(rem){rem.remaining=Math.max(0,rem.remaining-1);await DB.put("gradingReminders",rem)}
+  return true
+}
 async function registerAttendance(id,source="professor",sessionId=null,extra={}){
   const s=await DB.getOne("students",id),att=await getAttendance();
   if(!s){toast("Aluno não encontrado.");return}
   if(att.some(a=>a.studentId===id&&a.date===todayISO()&&(!sessionId||a.sessionId===sessionId))){toast("Este aluno já tem presença nesta aula.");return}
+  const me=await TonicaoAuth.currentUser(),cfg=await getSettings();
+  const attendanceId=sessionId?`${sessionId}_${id}`:uid("att");
+  if(me?.role==="aluno"&&cfg.cloudSessionToken&&sessionId){
+    await DB.put("attendance",{id:attendanceId,studentId:id,date:todayISO(),time:new Date().toTimeString().slice(0,5),source:"qr-codigo",sessionId,status:"pending",checkinCode:extra.checkinCode||""});
+    toast(navigator.onLine?"Check-in enviado. Os pontos entram quando o Professor sincronizar.":"Check-in salvo. Será enviado quando houver internet.");
+    TonicaoCloud.schedule(300);renderAll();return;
+  }
+  await DB.put("attendance",{id:attendanceId,studentId:id,date:todayISO(),time:new Date().toTimeString().slice(0,5),source,sessionId,status:"approved",...(extra.checkinCode?{checkinCode:extra.checkinCode}:{})});
+  const added=await awardAttendanceEffectsV027(id,sessionId,attendanceId);
   const pts=await scoreBaseRule("score-base-attendance",5);
-  await DB.put("attendance",{id:uid("att"),studentId:id,date:todayISO(),time:new Date().toTimeString().slice(0,5),source,sessionId,status:"approved",...(extra.checkinCode?{checkinCode:extra.checkinCode}:{})});
-  s.classesInBelt=(s.classesInBelt||0)+1;s.streak=(s.streak||0)+1;s.points=(s.points||0)+pts;
-  await applySequenceBonuses(s);await DB.put("students",s);
-  await DB.put("pointsLedger",{id:uid("pts"),studentId:id,date:todayISO(),type:"presenca",points:pts,note:`Presença no treino (+${pts})`,sessionId,ruleId:"score-base-attendance"});
-  const rem=(await DB.getAll("gradingReminders")).find(r=>r.studentId===id&&r.status==="active"&&r.mode==="classes"&&r.remaining>0);
-  if(rem){rem.remaining=Math.max(0,rem.remaining-1);await DB.put("gradingReminders",rem)}
-  toast(rem&&rem.remaining===0?`Presença registrada (+${pts}). Reavaliar graduação!`:`Presença registrada (+${pts} pts).`);renderAll()
+  const rem=(await DB.getAll("gradingReminders")).find(r=>r.studentId===id&&r.status==="active"&&r.mode==="classes"&&r.remaining===0);
+  toast(added?(rem?`Presença registrada (+${pts}). Reavaliar graduação!`:`Presença registrada (+${pts} pts).`):"Presença já contabilizada.");
+  renderAll()
 }
+window.awardAttendancePoints=async function(studentId,sessionId){
+  return await awardAttendanceEffectsV027(studentId,sessionId,`${sessionId}_${studentId}`)
+};
 async function profCheckin(id){if(!(await guard("attendance")))return;await registerAttendance(id,"professor",activeSession(await getSessions())?.id||null)}
 
 async function renderStudents(){
@@ -930,11 +1000,12 @@ async function setPayment(id,status){
   await TonicaoAuth.requirePerm("payments");
   const s=await DB.getOne("students",id),before=s.payment;s.payment=status;await DB.put("students",s);
   if(status==="liberado"&&before!=="liberado"){
-    const key=monthKey(),ledger=await getLedger(),already=ledger.some(x=>x.studentId===id&&x.type==="mensalidade"&&String(x.monthKey||x.date||"").startsWith(key));
+    const key=monthKey(),ledgerId=`pts-pay-${id}-${key}`;
+    const already=await DB.getOne("pointsLedger",ledgerId);
     if(!already){
       const pts=await scoreBaseRule("score-base-payment",20);
+      await DB.put("pointsLedger",{id:ledgerId,studentId:id,date:todayISO(),monthKey:key,type:"mensalidade",points:pts,note:`Mensalidade em dia — ${key} (+${pts})`,ruleId:"score-base-payment"});
       s.points=(s.points||0)+pts;await DB.put("students",s);
-      await DB.put("pointsLedger",{id:uid("pts"),studentId:id,date:todayISO(),monthKey:key,type:"mensalidade",points:pts,note:`Mensalidade em dia — ${key} (+${pts})`,ruleId:"score-base-payment"});
       toast(`Aluno liberado e +${pts} pontos pela mensalidade em dia.`);renderAll();return
     }
   }
@@ -1201,6 +1272,23 @@ async function saveAcademyRule(id=""){
   const group=document.getElementById("ruleGroup").value;
   await DB.put("academyRules",{id:id||uid("rule"),group,groupTitle:group==="dojo"?"Etiqueta no Dojô (Tatame)":"Regras do CT Fernando Carvalho",text:document.getElementById("ruleText").value.trim(),order:Number(document.getElementById("ruleOrder").value||1),active:document.getElementById("ruleActive").value==="true",source:"Editado pelo Professor"});
   closeModal();toast("Regra salva.");renderMore("rules")
+}
+
+function downloadJsonV027(name,obj){
+  const blob=new Blob([JSON.stringify(obj,null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500)
+}
+async function exportMyDataV027(){
+  const me=await TonicaoAuth.currentUser(),settings=await getSettings();
+  const out={exportedAt:new Date().toISOString(),academyId:settings.academyId||currentAcademyIdV027(),account:me?{id:me.id,name:me.name,email:me.email||"",username:me.username||"",role:me.role,studentId:me.studentId||""}:null};
+  if(me?.role==="aluno"&&me.studentId){
+    out.student=await DB.getOne("students",me.studentId);
+    for(const st of ["attendance","gradingHistory","gradingAssignments","gradingReminders","pointsLedger","paymentStatus","notifications"]){
+      out[st]=(await DB.getAll(st)).filter(x=>x.studentId===me.studentId||x.targetStudentId===me.studentId||(!x.studentId&&!x.targetStudentId&&st==="notifications"))
+    }
+  }
+  downloadJsonV027(`meus-dados-${out.academyId}-${todayISO()}.json`,out);
+  toast("Arquivo com seus dados preparado.")
 }
 
 async function renderMore(mode="menu"){
@@ -1500,10 +1588,27 @@ if(mode==="backup"){
 
 
 
+
+if(mode==="privacy"){
+  const me=await TonicaoAuth.currentUser(),settings=await getSettings();
+  document.getElementById("more").innerHTML=`
+    <div class="section-title"><h2>Privacidade e dados</h2><button class="btn secondary" onclick="renderMore()">Voltar</button></div>
+    <div class="card">
+      <h3>Como o aplicativo usa os dados</h3>
+      <p class="small muted">O app utiliza dados necessários para cadastro, comunicação da academia, presença, graduação, pontuação, situação de acesso e segurança. Parte fica disponível offline no aparelho e, quando a conta está conectada, é sincronizada com o Firebase da academia.</p>
+      <p class="small muted"><strong>Kids:</strong> cadastro de menor deve ser realizado com ciência/autorização do responsável. Nome e telefone do responsável são registrados junto à ficha.</p>
+      <p class="small muted"><strong>Decisões de graduação:</strong> presença, tempo e checklist são referências; a decisão continua sendo do Professor.</p>
+      <button class="btn primary full" onclick="exportMyDataV027()">⬇️ Exportar meus dados</button>
+    </div>
+    <div class="notice" style="margin-top:12px"><strong>Correção ou exclusão</strong><div class="small">Para corrigir ou solicitar exclusão de dados, procure o Administrador/Dono da academia. A exclusão deve respeitar registros que a academia precise manter por obrigação legal ou para resolver pendências.</div></div>
+    <div class="notice" style="margin-top:12px"><strong>Academia atual</strong><div class="small">${esc(settings.academyName||"Academia")} • ${esc(settings.unitName||"Unidade")} • ID ${esc(settings.academyId||currentAcademyIdV027())}</div></div>`;
+  return
+}
+
 if(mode==="users"){
   const me=await TonicaoAuth.currentUser();
   if(me?.role!=="admin"){toast("Somente o Administrador/Dono pode gerenciar usuários.");renderMore();return}
-  const users=await (TonicaoAuth.allUsers?TonicaoAuth.allUsers():TonicaoAuth.users());
+  const users=await TonicaoAuth.users();
   const students=await getStudents();
   document.getElementById("more").innerHTML=`
     <div class="section-title"><h2>Usuários e permissões</h2><button class="btn secondary" onclick="renderMore()">Voltar</button></div>
@@ -1518,7 +1623,7 @@ if(mode==="users"){
         </div></div>
       </div>`).join("")}</div>
     <div class="section-title"><h2>Usuários do servidor</h2><div class="actions"><button class="btn primary" onclick="newRemoteUserModal()">+ Remoto</button><button class="btn secondary" onclick="renderRemoteGoogleUsers()">Atualizar</button></div></div>
-    <div id="remoteGoogleUsersBox"><div class="card"><p class="small muted">Entre no servidor em “Sincronização automática” para aprovar cadastros Google.</p></div></div>
+    <div id="remoteGoogleUsersBox"><div class="card"><p class="small muted">Carregando contas da academia…</p></div></div>
     <div class="notice"><strong>Perfis</strong><div class="small"><b>Aluno:</b> somente sua área. <b>Professor:</b> autoridade acadêmica e operacional — cadastro/aprovação, check-in, presença, graduação, pontos e conteúdo. <b>Administrador/Dono:</b> manutenção, usuários, identidade e acesso da academia; visualiza o acadêmico, mas não altera decisões do Professor.</div></div>`;
   setTimeout(()=>renderRemoteGoogleUsers(),50);
   return
@@ -1539,89 +1644,43 @@ if(mode==="systemaccess"){
   const me=await TonicaoAuth.currentUser();if(me?.role!=="admin"){toast("Somente o Administrador/Dono.");renderMore();return}
   const settings=await getSettings();
   document.getElementById("more").innerHTML=`
-    <div class="section-title"><h2>Acesso da academia</h2><button class="btn secondary" onclick="renderMore()">Voltar</button></div>
+    <div class="section-title"><h2>Status da academia</h2><button class="btn secondary" onclick="renderMore()">Voltar</button></div>
     <div class="card">
       <span class="pill ${settings.academyAccessStatus==="blocked"?"amber":"green"}">${settings.academyAccessStatus==="blocked"?"BLOQUEADO":"ATIVO"}</span>
-      <h3 style="margin-top:12px">Controle do aplicativo</h3>
-      <p class="small muted">Este bloqueio é da assinatura/uso do aplicativo, separado do pagamento dos alunos. Bloquear não apaga nenhum dado.</p>
-      <div class="field"><label>Status</label><select id="systemAccessStatus"><option value="active" ${settings.academyAccessStatus!=="blocked"?"selected":""}>Ativo</option><option value="blocked" ${settings.academyAccessStatus==="blocked"?"selected":""}>Bloqueado</option></select></div>
-      <div class="field"><label>Motivo / mensagem</label><textarea id="systemAccessReason">${settings.academyAccessReason||"Acesso temporariamente suspenso. Fale com o responsável pelo aplicativo."}</textarea></div>
-      <button class="btn primary full" onclick="saveSystemAccess()">Salvar status</button>
-    </div>
-    <div class="notice"><strong>O que acontece ao bloquear</strong><div class="small">Professor e alunos não entram na operação. O Administrador/Dono continua acessando manutenção e pode reativar quando necessário.</div></div>`;
+      <h3 style="margin-top:12px">Acesso do aplicativo</h3>
+      <p class="small muted">O Administrador/Dono da academia pode consultar a situação, mas não consegue alterar a assinatura/bloqueio comercial. Esse controle pertence ao Administrador da Plataforma.</p>
+      ${settings.academyAccessReason?`<div class="notice payment"><strong>Mensagem da plataforma</strong><div class="small">${esc(settings.academyAccessReason)}</div></div>`:""}
+      <a class="btn secondary full" style="display:block;text-align:center;text-decoration:none;margin-top:12px" href="./platform.html" target="_blank" rel="noopener">Abrir Central da Plataforma</a>
+    </div>`;
   return
 }
-
 if(mode==="cloud"){
-  const settings=await getSettings();
-  const status=await TonicaoCloud.getStatus();
-  const remoteUser=settings.remoteUser||null;
-  const me=await TonicaoAuth.currentUser();
-  document.getElementById("more").innerHTML=`
-    <div class="section-title"><h2>Sincronização automática</h2><button class="btn secondary" onclick="renderMore()">Voltar</button></div>
-
-    <div class="cloud-status ${status.online?"online":"offline"}">
-      <div><strong>${status.online?"🟢 Com internet":"⚪ Sem internet"}</strong><div class="small muted">${status.pending} alteração(ões) aguardando envio</div></div>
-      <span class="pill ${status.pending?"amber":"green"}">${status.pending?"pendente":"em dia"}</span>
-    </div>
-
-    <div class="card">
-      <h3>Servidor</h3>
-      <div class="field"><label>Sincronização automática</label><select id="cloudEnabled"><option value="true" ${settings.cloudEnabled?"selected":""}>Ativada</option><option value="false" ${!settings.cloudEnabled?"selected":""}>Desativada</option></select></div>
-      <div class="field"><label>Endereço</label><input id="cloudEndpoint" value="${settings.cloudEndpoint||""}" placeholder="https://servidor-da-academia.com"></div>
-      <div class="field"><label>Token geral (modo legado/teste)</label><input id="cloudToken" type="password" value="${settings.cloudToken||""}" placeholder="Opcional quando houver login remoto"></div>
-      <div class="actions">
-        <button class="btn primary" onclick="saveCloudConfig()">Salvar</button>
-        <button class="btn secondary" onclick="testCloud()">Testar servidor</button>
-        <button class="btn green" onclick="syncCloudNow()">Sincronizar agora</button>
+    const settings=await getSettings();
+    const status=await TonicaoCloud.getStatus();
+    const remoteUser=settings.remoteUser||null;
+    document.getElementById("more").innerHTML=`
+      <div class="section-title"><h2>Sincronização</h2><button class="btn secondary" onclick="renderMore()">Voltar</button></div>
+      <div class="cloud-status ${status.online?"online":"offline"}">
+        <div><strong>${status.online?"🟢 Com internet":"⚪ Sem internet"}</strong><div class="small muted">${status.pending} alteração(ões) aguardando envio</div></div>
+        <span class="pill ${status.pending?"amber":"green"}">${status.pending?"pendente":"em dia"}</span>
       </div>
-    </div>
-
-    <div class="section-title"><h2>Login com Google</h2></div>
-    <div class="card">
-      <p class="small muted">O Client ID é público e deve ser o mesmo configurado no servidor. O app não recebe sua senha do Google.</p>
-      <div class="field"><label>Google Web Client ID</label><input id="googleClientId" value="${settings.googleClientId||""}" placeholder="xxxx.apps.googleusercontent.com"></div>
-      <div class="actions">
-        <button class="btn primary" onclick="saveGoogleClientId()">Salvar Client ID</button>
-        <button class="btn secondary" onclick="loadGoogleConfig()">Carregar do servidor</button>
-      </div>
-      <div class="small muted" style="margin-top:8px">Status: ${settings.googleAuthEnabled&&settings.googleClientId?"configurado":"não configurado"}</div>
-    </div>
-
-    <div class="section-title"><h2>Conta no servidor</h2></div>
-    ${remoteUser?`
       <div class="card">
-        <span class="pill green">Conectado</span>
-        <h3 style="margin-top:10px">${remoteUser.name||remoteUser.username}</h3>
-        <p class="small muted">${remoteUser.role||""} • @${remoteUser.username||""}</p>
-        <button class="btn danger" onclick="remoteLogout()">Sair do servidor</button>
-      </div>`:`
-      <div class="card">
-        <div class="field"><label>Usuário remoto</label><input id="remoteUserName" autocomplete="username"></div>
-        <div class="field"><label>Senha remota</label><input id="remotePassword" type="password" autocomplete="current-password"></div>
-        <div class="actions"><button class="btn primary" onclick="remoteLogin()">Entrar no servidor</button></div>
+        <h3>Firebase</h3>
+        ${status.configured?`<p class="small muted">Projeto: <strong>${esc(TonicaoFirebase.cfg.projectId)}</strong> • Academia: <strong>${esc(TonicaoFirebase.academyId())}</strong></p>`:`<div class="notice payment"><strong>Não configurado</strong><div class="small">Preencha o arquivo firebase-config.js e publique novamente.</div></div>`}
+        ${remoteUser?`<p class="small">Conectado como <strong>${esc(remoteUser.name)}</strong> • ${esc(TonicaoAuth.ROLE_LABEL[remoteUser.role]||remoteUser.role)}</p>`:""}
+        <div class="actions"><button class="btn green" onclick="syncCloudNow()">Sincronizar agora</button><button class="btn secondary" onclick="showRemotePermissions()">Minhas permissões</button></div>
+        ${remoteUser?.role==="professor"?`<button class="btn secondary full" style="margin-top:10px" onclick="cloudUploadAll()">Enviar todos os dados deste aparelho</button><p class="small muted">Use uma vez, no celular do Professor que já tem os alunos cadastrados. Apague antes os alunos de exemplo.</p>`:""}
+        <div id="remotePermResult" class="small muted" style="margin-top:8px"></div>
       </div>
-      ${me?.role==="admin"?`
-      <div class="card" style="margin-top:12px">
-        <h3>Primeiro administrador remoto</h3>
-        <p class="small muted">Use apenas na primeira configuração de um servidor novo.</p>
-        <div class="field"><label>Usuário</label><input id="remoteBootUser" value="admin"></div>
-        <div class="field"><label>Senha</label><input id="remoteBootPass" type="password"></div>
-        <div class="field"><label>Segredo de implantação</label><input id="remoteBootSecret" type="password" placeholder="TONICAO_BOOTSTRAP_SECRET"></div>
-        <button class="btn secondary full" onclick="remoteBootstrap()">Criar administrador remoto</button>
-      </div>`:""}`}
-
-    <div class="section-title"><h2>Permissões do servidor</h2></div><div class="card" id="remotePermissionsCard"><p class="small muted">As permissões de sincronização também são verificadas no backend. Alunos só podem enviar dados permitidos e vinculados à própria ficha.</p><button class="btn secondary" onclick="showRemotePermissions()">Ver minhas permissões</button><div id="remotePermResult" class="small muted" style="margin-top:8px"></div></div>
-    <div class="section-title"><h2>Estado</h2></div>
-    <div class="card">
-      <div class="cloud-row"><span>Última sincronização</span><strong>${status.lastSync?new Date(status.lastSync).toLocaleString("pt-BR"):"Nunca"}</strong></div>
-      <div class="cloud-row"><span>Fila local</span><strong>${status.pending}</strong></div>
-      <div class="cloud-row"><span>Cursor remoto</span><strong>${status.cursor||0}</strong></div>
-      ${status.lastError?`<div class="notice payment" style="margin-top:12px"><strong>Último erro</strong><div class="small">${status.lastError}</div></div>`:""}
-    </div>
-    <div class="notice"><strong>Offline continua sendo prioridade</strong><div class="small">Tudo é salvo no aparelho primeiro. Login remoto e servidor são uma camada adicional.</div></div>`;
-  return
-}
+      <div class="section-title"><h2>Estado</h2></div>
+      <div class="card">
+        <div class="cloud-row"><span>Última sincronização</span><strong>${status.lastSync?new Date(status.lastSync).toLocaleString("pt-BR"):"Nunca"}</strong></div>
+        <div class="cloud-row"><span>Fila local</span><strong>${status.pending}</strong></div>
+        ${status.lastError?`<div class="notice payment" style="margin-top:12px"><strong>Último aviso</strong><div class="small">${esc(status.lastError)}</div></div>`:""}
+      </div>
+      <div class="notice"><strong>Offline continua sendo prioridade</strong><div class="small">Tudo é salvo no aparelho primeiro e enviado quando houver internet. Quem pode ver e alterar cada dado é decidido pelas regras do Firestore.</div></div>`;
+    return
+  }
 if(mode==="notifications"){
   await TonicaoNotifications.syncInbox({showDevice:false});
   const ns=await visibleNotifications(),unread=ns.filter(n=>!n.read).length,status=await TonicaoNotifications.status();
@@ -1649,6 +1708,7 @@ if(mode==="notifications"){
       <div class="list-item" onclick="renderMore('history')"><div class="icon">📖</div><div><strong>Nossa História</strong><span class="small muted">Equipe, unidade, linhagem e professores.</span></div></div>
       <div class="list-item" onclick="renderMore('timer')"><div class="icon">⏱️</div><div><strong>Cronômetro</strong><span class="small muted">Rounds, descanso e presets.</span></div></div>
       <div class="list-item" onclick="renderMore('access')"><div class="icon">🔐</div><div><strong>Acesso e aparelhos</strong><span class="small muted">Convite e vínculo do aluno.</span></div></div>
+      <div class="list-item" onclick="renderMore('privacy')"><div class="icon">🔏</div><div><strong>Privacidade e dados</strong><span class="small muted">Consentimento, exportação e orientações de exclusão.</span></div></div>
       <div class="list-item" onclick="renderMore('backup')"><div class="icon">💾</div><div><strong>Backup e sincronização</strong><span class="small muted">Exportar, importar e transferir dados.</span></div></div>
       <div class="list-item" onclick="renderMore('cloud')"><div class="icon">☁️</div><div><strong>Sincronização automática</strong><span class="small muted">Fila offline e atualização entre aparelhos.</span></div></div>
       ${settings.role==="professor"?`
@@ -1658,10 +1718,10 @@ if(mode==="notifications"){
         <div class="list-item" onclick="renderMore('academy')"><div class="icon">⚙️</div><div><strong>Configurar academia</strong><span class="small muted">Logo, nome, cor e história institucional.</span></div></div>
         <div class="list-item" onclick="renderMore('newacademy')"><div class="icon">🏫</div><div><strong>Nova academia</strong><span class="small muted">Criar identidade e conteúdo institucional em branco.</span></div></div>
         <div class="list-item" onclick="renderMore('users')"><div class="icon">🛡️</div><div><strong>Usuários e permissões</strong><span class="small muted">Administrador, professores e alunos.</span></div></div>
-        <div class="list-item" onclick="renderMore('systemaccess')"><div class="icon">🔒</div><div><strong>Acesso da academia</strong><span class="small muted">Ativar ou suspender Professor e Alunos sem apagar dados.</span></div></div>
+        <div class="list-item" onclick="renderMore('systemaccess')"><div class="icon">🔒</div><div><strong>Status da academia</strong><span class="small muted">Situação de acesso definida pela plataforma.</span></div></div>
         <div class="list-item" onclick="renderMore('audit')"><div class="icon">🧾</div><div><strong>Auditoria</strong><span class="small muted">Histórico de ações importantes.</span></div></div>
       `:""}
-      <div class="list-item" onclick="logoutAuth()"><div class="icon">🚪</div><div><strong>Sair</strong><span class="small muted">Encerrar sessão neste aparelho.</span></div></div>
+      <div class="list-item" onclick="accountMenu()"><div class="icon">🔄</div><div><strong>Trocar de conta / Sair</strong><span class="small muted">Entrar com outro usuário neste aparelho.</span></div></div>
     </div>`
 }
 function toggleRanking(which){const g=document.getElementById("rankingGeneral"),m=document.getElementById("rankingMonthly");if(!g||!m)return;g.style.display=which==="general"?"flex":"none";m.style.display=which==="monthly"?"flex":"none";document.querySelectorAll(".tabs button").forEach((b,i)=>b.classList.toggle("active",(which==="general"&&i===0)||(which==="monthly"&&i===1)))}
@@ -1752,7 +1812,7 @@ async function applyEventScores(eventId){
     if(result==="participacao"){pts=Number(e.scoring.participacao||0);label="participação sem pódio"}
     else{const [division,place]=result.split(":");pts=Number(e.scoring?.[division]?.[place]||0);label=`${division} — ${place}`}
     s.points=(s.points||0)+pts;await DB.put("students",s);
-    await DB.put("pointsLedger",{id:uid("pts"),studentId:s.id,date:e.date,type:"campeonato",points:pts,eventId,presetId:e.presetId||"",note:`${e.title} — ${label}`});count++
+    await DB.put("pointsLedger",{id:`pts-event-${eventId}-${s.id}`,studentId:s.id,date:e.date,type:"campeonato",points:pts,eventId,presetId:e.presetId||"",note:`${e.title} — ${label}`});count++
   }
   closeModal();toast(`${count} lançamento(s) aplicado(s).`);renderAll();goPage("more");renderMore("events")
 }
@@ -1837,23 +1897,25 @@ async function quickInvite(id){
 async function saveAcademySettings(){if(!(await guardRoles(["admin","professor"])))return;
   const me=await TonicaoAuth.currentUser();
   if(me?.role!=="admin"){toast("Somente o Administrador pode alterar a academia.");return}
+  const requested=String(document.getElementById("cfgAcademyId").value||"").trim().toLowerCase().replace(/[^a-z0-9_-]+/g,"-").replace(/^-+|-+$/g,"");
+  const official=currentAcademyIdV027();
+  if(requested&&requested!==official){toast("O ID da academia não pode ser trocado nesta tela. Use “Nova academia” para criar outra unidade sem misturar dados.");return}
   const s=await getSettings();
   s.academyName=document.getElementById("cfgAcademyName").value.trim()||"Academia";
   s.unitName=document.getElementById("cfgUnitName").value.trim()||"Unidade";
-  s.academyId=document.getElementById("cfgAcademyId").value.trim()||"academia-local";
+  s.academyId=official;
   s.accentColor=document.getElementById("cfgAccent").value||"#2563eb";
   s.publicAppUrl=document.getElementById("cfgPublicUrl")?.value.trim()||s.publicAppUrl||"";
   const file=document.getElementById("cfgLogo")?.files?.[0];
   if(file){
     s.logoDataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.readAsDataURL(file)});
   }
+  localStorage.setItem("tonicao_academy_id",official);
   await DB.put("settings",s);
   applyBranding(s);
   await TonicaoAuth.audit("academy.identity","Identidade visual da academia atualizada",null,{academyId:s.academyId});
   toast("Identidade salva.");await renderAll();goPage("more");renderMore("academy");
 }
-
-
 let timerState={running:false,phase:"work",remaining:300,round:1,totalRounds:5,work:300,rest:60,timer:null};
 function fmtTimer(sec){sec=Math.max(0,Math.floor(sec));return `${String(Math.floor(sec/60)).padStart(2,"0")}:${String(sec%60).padStart(2,"0")}`}
 function updateTimerUI(){
@@ -1997,13 +2059,13 @@ async function testCloud(){
     toast(r?.ok?"Servidor conectado.":"Servidor respondeu.");
   }catch(e){toast(e.message||"Falha ao conectar.");}
 }
+async function cloudUploadAll(){
+  if(!(await guard("manage_students")))return;
+  if(!confirm("Enviar todos os alunos, presenças, graduações e conteúdos deste aparelho para o Firebase?"))return;
+  try{const n=await TonicaoCloud.uploadAll();toast(`${n} registro(s) na fila. Sincronizando…`);await syncCloudNow()}catch(e){toast(e.message||"Falha ao enviar.")}
+}
 async function syncCloudNow(){
   try{
-    await TonicaoCloud.saveConfig({
-      enabled:document.getElementById("cloudEnabled").value==="true",
-      endpoint:document.getElementById("cloudEndpoint").value.trim(),
-      token:document.getElementById("cloudToken").value.trim()
-    });
     const r=await TonicaoCloud.syncNow();
     toast(`Sincronizado: ${r.pushed||0} enviado(s), ${r.applied||0} recebido(s).`);
     await renderAll();goPage("more");renderMore("cloud");
@@ -2089,29 +2151,19 @@ async function createBlankAcademyTemplate(){if(!(await guardRoles(["admin","prof
   if(me?.role!=="admin"){toast("Somente o Administrador.");return}
   const name=document.getElementById("newAcademyName").value.trim();
   const unit=document.getElementById("newUnitName").value.trim();
-  const id=document.getElementById("newAcademyId").value.trim();
-  if(!name||!unit||!id){toast("Preencha nome, unidade e ID.");return}
-
-  const s=await getSettings();
-  s.academyName=name;s.unitName=unit;s.academyId=id;
-  s.accentColor=document.getElementById("newAcademyColor").value||"#2563eb";
-  delete s.logoDataUrl;
-  await DB.put("settings",s);
-
-  await DB.put("academyContent",{
-    id:"main",teamHistory:"",unitHistory:"",lineage:"",professors:"",sourcesNote:""
-  });
-
-  for(const x of await DB.getAll("academyTimeline"))await DB.removeOne("academyTimeline",x.id);
-  for(const x of await DB.getAll("academyGallery"))await DB.removeOne("academyGallery",x.id);
-
-  await TonicaoAuth.audit("academy.blank","Estrutura institucional limpa criada",null,{academyId:id});
-  applyBranding(s);
-  toast("Nova academia criada com conteúdo institucional em branco.");
-  await renderAll();goPage("more");renderMore("academy");
+  const raw=document.getElementById("newAcademyId").value.trim().toLowerCase();
+  const id=raw.replace(/[^a-z0-9_-]+/g,"-").replace(/^-+|-+$/g,"");
+  if(!name||!unit||!id){toast("Preencha nome, unidade e um ID válido.");return}
+  if(id===currentAcademyIdV027()){toast("Este ID já é a academia atual.");return}
+  localStorage.setItem("tonicao_pending_academy_id",id);
+  localStorage.setItem("tonicao_pending_academy_name",name);
+  localStorage.setItem("tonicao_pending_unit_name",unit);
+  localStorage.setItem("tonicao_pending_academy_color",document.getElementById("newAcademyColor").value||"#2563eb");
+  localStorage.setItem("tonicao_academy_id",id);
+  const base=await getPublicAppUrl(),u=new URL(base,location.href);
+  u.search="";u.searchParams.set("academy",id);
+  location.href=u.href;
 }
-
-
 function newTimelineItemModal(){
   showModal(`<h3>Novo marco histórico</h3>
     <div class="field"><label>Ano/período</label><input id="tlYear" placeholder="Ex.: 2012"></div>
@@ -2140,22 +2192,41 @@ async function deleteTimelineItem(id){if(!(await guardRoles(["admin","professor"
   const me=await TonicaoAuth.currentUser();if(me?.role!=="admin"){return}
   await DB.removeOne("academyTimeline",id);toast("Marco excluído.");renderMore("academy");
 }
+async function compressGalleryImageV027(file,maxSide=1600,quality=.82){
+  const src=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.readAsDataURL(file)});
+  const img=await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=src});
+  const scale=Math.min(1,maxSide/Math.max(img.width,img.height)),w=Math.max(1,Math.round(img.width*scale)),h=Math.max(1,Math.round(img.height*scale));
+  const c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);
+  const blob=await new Promise(resolve=>c.toBlob(resolve,"image/jpeg",quality));
+  return {blob,dataUrl:c.toDataURL("image/jpeg",quality)}
+}
 async function saveGalleryPhoto(){if(!(await guardRoles(["admin","professor"])))return;
   const me=await TonicaoAuth.currentUser();if(me?.role!=="admin"){toast("Somente Administrador.");return}
   const file=document.getElementById("galleryFile")?.files?.[0];if(!file){toast("Escolha uma foto.");return}
-  const dataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.readAsDataURL(file)});
-  await DB.put("academyGallery",{id:uid("gal"),dataUrl,caption:document.getElementById("galleryCaption").value.trim(),category:"acervo",createdAt:new Date().toISOString()});
-  toast("Foto adicionada.");renderMore("academy");
+  if(!String(file.type||"").startsWith("image/")){toast("Escolha um arquivo de imagem.");return}
+  if(file.size>12*1024*1024){toast("A foto é muito grande. Use uma imagem de até 12 MB.");return}
+  const id=uid("gal"),img=await compressGalleryImageV027(file),record={id,caption:document.getElementById("galleryCaption").value.trim(),category:"acervo",createdAt:new Date().toISOString()};
+  let stored=false;
+  if(window.TonicaoFirebase?.storage&&navigator.onLine){
+    try{
+      const path=`academies/${currentAcademyIdV027()}/gallery/${id}.jpg`,ref=TonicaoFirebase.storage.ref().child(path);
+      await ref.put(img.blob,{contentType:"image/jpeg",customMetadata:{academyId:currentAcademyIdV027()}});
+      record.assetUrl=await ref.getDownloadURL();record.storagePath=path;stored=true
+    }catch(e){console.warn("Storage indisponível; usando fallback comprimido.",e)}
+  }
+  if(!stored){
+    if(img.dataUrl.length>700000){toast("Não foi possível enviar ao Storage e a imagem ainda ficou grande demais.");return}
+    record.dataUrl=img.dataUrl
+  }
+  await DB.put("academyGallery",record);
+  toast(stored?"Foto enviada ao acervo.":"Foto adicionada em modo compatível.");renderMore("academy");
 }
 async function deleteGalleryPhoto(id){if(!(await guardRoles(["admin","professor"])))return;
   const me=await TonicaoAuth.currentUser();if(me?.role!=="admin"){return}
+  const g=await DB.getOne("academyGallery",id);
+  if(g?.storagePath&&window.TonicaoFirebase?.storage&&navigator.onLine){try{await TonicaoFirebase.storage.ref().child(g.storagePath).delete()}catch(e){}}
   await DB.removeOne("academyGallery",id);toast("Foto excluída.");renderMore("academy");
 }
-
-
-
-
-
 async function buildReport(){
   const host=document.getElementById("reportResult");if(!host)return;
   const start=document.getElementById("reportStart")?.value||"1900-01-01";
@@ -2320,7 +2391,7 @@ async function approveGoogleRegistration(userId){
 
 async function newRemoteUserModal(){
   const students=await getStudents();
-  showModal(`<h3>Novo usuário remoto</h3><div class="field"><label>Nome</label><input id="ruName"></div><div class="field"><label>Usuário</label><input id="ruUsername"></div><div class="field"><label>Senha</label><input id="ruPassword" type="password"></div><div class="field"><label>Perfil</label><select id="ruRole" onchange="toggleRemoteStudentField()"><option value="professor">Professor</option><option value="aluno">Aluno</option><option value="admin">Administrador</option></select></div><div class="field" id="ruStudentWrap" style="display:none"><label>Ficha do aluno</label><select id="ruStudent"><option value="">Selecione</option>${students.map(s=>`<option value="${s.id}">${s.name}</option>`).join("")}</select></div><button class="btn primary full" onclick="saveNewRemoteUser()">Criar no servidor</button>`);
+  showModal(`<h3>Nova conta da academia</h3><div class="field"><label>Nome</label><input id="ruName"></div><div class="field"><label>E-mail</label><input id="ruUsername" type="email"></div><div class="field"><label>Senha inicial (9+ caracteres, maiúscula, número e símbolo)</label><input id="ruPassword" type="password"></div><div class="field"><label>Perfil</label><select id="ruRole" onchange="toggleRemoteStudentField()"><option value="professor">Professor</option><option value="aluno">Aluno</option><option value="admin">Administrador</option></select></div><div class="field" id="ruStudentWrap" style="display:none"><label>Ficha do aluno</label><select id="ruStudent"><option value="">Selecione</option>${students.map(s=>`<option value="${s.id}">${s.name}</option>`).join("")}</select></div><button class="btn primary full" onclick="saveNewRemoteUser()">Criar no servidor</button>`);
 }
 function toggleRemoteStudentField(){const role=document.getElementById("ruRole")?.value;const wrap=document.getElementById("ruStudentWrap");if(wrap)wrap.style.display=role==="aluno"?"block":"none";}
 async function saveNewRemoteUser(){try{const role=document.getElementById("ruRole").value;const studentId=document.getElementById("ruStudent")?.value||"";if(role==="aluno"&&!studentId)throw new Error("Selecione a ficha do aluno.");await TonicaoRemoteAuth.createRemoteUser({name:document.getElementById("ruName").value.trim(),username:document.getElementById("ruUsername").value.trim(),password:document.getElementById("ruPassword").value,role,studentId});closeModal();toast("Usuário remoto criado.");renderRemoteGoogleUsers();}catch(e){toast(e.message||"Falha ao criar usuário remoto.");}}
@@ -2328,21 +2399,16 @@ async function editRemoteUserModal(id){const users=window.__REMOTE_USERS_CACHE__
 function toggleEditRemoteStudent(){const role=document.getElementById("reuRole")?.value;const wrap=document.getElementById("reuStudentWrap");if(wrap)wrap.style.display=role==="aluno"?"block":"none";}
 async function saveEditRemoteUser(id){try{const role=document.getElementById("reuRole").value;const studentId=document.getElementById("reuStudent")?.value||"";if(role==="aluno"&&!studentId)throw new Error("Selecione a ficha do aluno.");await TonicaoRemoteAuth.updateRemoteUser({userId:id,role,studentId,active:true,name:document.getElementById("reuName").value.trim()});closeModal();toast("Usuário remoto atualizado.");renderRemoteGoogleUsers();}catch(e){toast(e.message||"Falha ao atualizar.");}}
 async function toggleRemoteUser(id,active){try{const u=(window.__REMOTE_USERS_CACHE__||[]).find(x=>x.id===id);if(!u)return;await TonicaoRemoteAuth.updateRemoteUser({userId:id,role:u.role,studentId:u.studentId||"",active,name:u.name||""});toast(active?"Usuário remoto ativado.":"Usuário remoto desativado.");renderRemoteGoogleUsers();}catch(e){toast(e.message||"Falha ao alterar status.");}}
-async function resetRemotePasswordModal(id){showModal(`<h3>Redefinir senha remota</h3><div class="field"><label>Nova senha/PIN</label><input id="rrpPassword" type="password"></div><button class="btn primary full" onclick="saveRemotePassword('${id}')">Salvar nova senha</button>`);}
-async function saveRemotePassword(id){try{await TonicaoRemoteAuth.resetRemotePassword({userId:id,password:document.getElementById("rrpPassword").value});closeModal();toast("Senha remota alterada.");}catch(e){toast(e.message||"Falha ao redefinir senha.");}}
+async function resetRemotePasswordModal(id){showModal(`<h3>Redefinir senha</h3><p class="small muted">A pessoa recebe um e-mail com o link para criar uma nova senha.</p><button class="btn primary full" onclick="saveRemotePassword('${esc(id)}')">Enviar e-mail de redefinição</button>`);}
+async function saveRemotePassword(id){try{await TonicaoRemoteAuth.resetRemotePassword({userId:id});closeModal();toast("E-mail de redefinição enviado.");}catch(e){toast(e.message||"Falha ao redefinir senha.");}}
 
 
 async function showRemotePermissions(){try{const r=await TonicaoRemoteAuth.remotePermissions();const host=document.getElementById("remotePermResult");if(host)host.innerHTML=`Perfil remoto: <strong>${r.role}</strong><br>Stores que pode alterar: ${(r.writeStores||[]).join(", ")||"nenhum"}`;}catch(e){toast(e.message||"Falha ao consultar permissões.");}}
 
 
-async function saveSystemAccess(){if(!(await guard("manage_system")))return;
-  const me=await TonicaoAuth.currentUser();if(me?.role!=="admin"){toast("Somente o Administrador/Dono.");return}
-  const s=await getSettings();s.academyAccessStatus=document.getElementById("systemAccessStatus").value;s.academyAccessReason=document.getElementById("systemAccessReason").value.trim();s.academyAccessUpdatedAt=new Date().toISOString();await DB.put("settings",s);
-  try{if(s.cloudSessionToken)await TonicaoRemoteAuth.setAcademyAccess({status:s.academyAccessStatus,reason:s.academyAccessReason})}catch(e){}
-  await TonicaoAuth.audit("system.access","Status de acesso da academia alterado",null,{status:s.academyAccessStatus});
-  toast(s.academyAccessStatus==="blocked"?"Academia bloqueada. Dados preservados.":"Academia reativada.");renderMore("systemaccess")
+async function saveSystemAccess(){
+  toast("O status da academia agora é gerenciado somente pela Central da Plataforma.")
 }
-
 function goPage(id){
   currentMainPage=id;
   document.querySelectorAll(".page").forEach(p=>p.classList.toggle("active",p.id===id));
@@ -2356,9 +2422,10 @@ document.querySelectorAll(".nav button").forEach(btn=>btn.addEventListener("clic
 }));
 
 async function renderAuthGate(){
+  setTimeout(updateAccountButton,0);
   const completionToken=new URLSearchParams(location.search).get("complete");
   if(completionToken){
-    if(!officialApiBase()&&!((await DB.getAll("registrationRequests")).some(r=>r.inviteToken===completionToken))){
+    if(!officialApiBase()&&!window.TonicaoFirebase?.configured&&!((await DB.getAll("registrationRequests")).some(r=>r.inviteToken===completionToken))){
       const gate=document.getElementById("authGate"),host=document.getElementById("authGateContent");gate.classList.add("show");document.body.classList.add("auth-locked");
       host.innerHTML=`<h2>Servidor ainda não configurado</h2><div class="notice payment"><strong>O link é válido, mas o aplicativo publicado ainda não tem a API oficial configurada.</strong><div class="small">Configure <code>apiBase</code> no arquivo config.js com a URL HTTPS do servidor e publique novamente.</div></div>`;return false
     }
@@ -2366,6 +2433,7 @@ async function renderAuthGate(){
   }
 
   const gate=document.getElementById("authGate"),host=document.getElementById("authGateContent");
+  if(window.TonicaoFirebase?.configured)return await renderCloudAuthGate(gate,host);
   const hasUsers=await TonicaoAuth.hasAnyUser(),hasOwner=await TonicaoAuth.hasOwner(),current=await TonicaoAuth.currentUser();
   if(hasOwner&&current){
     gate.classList.remove("show");document.body.classList.remove("auth-locked");return true
@@ -2398,6 +2466,72 @@ async function renderAuthGate(){
   }
   return false
 }
+async function updateAccountButton(){
+  const btn=document.getElementById("accountBtn");if(!btn)return;
+  const me=await TonicaoAuth.currentUser();
+  btn.style.display=me?"inline-flex":"none";btn.style.alignItems="center";btn.style.justifyContent="center";
+  if(me)btn.title=`${me.name||"Minha conta"} — trocar de conta`;
+}
+async function renderCloudAuthGate(gate,host){
+  const current=await TonicaoAuth.currentUser(),settings=await getSettings();
+  if(current&&settings.cloudSessionToken){gate.classList.remove("show");document.body.classList.remove("auth-locked");return true}
+  gate.classList.add("show");document.body.classList.add("auth-locked");
+  host.innerHTML=`
+    <h2>Entrar</h2>
+    <p class="muted">Acesse com a conta da academia.</p>
+    <div class="field"><label>E-mail</label><input id="cloudEmail" type="email" autocomplete="username"></div>
+    <div class="field"><label>Senha</label><input id="cloudPass" type="password" autocomplete="current-password"></div>
+    <button class="btn primary full" onclick="cloudLoginAuth()">Entrar</button>
+    <button class="btn secondary full" style="margin-top:8px" onclick="cloudForgotPassword()">Esqueci a senha</button>
+    <div class="auth-divider"><span>ou</span></div>
+    <div id="googleLoginArea" class="google-login-area"></div>
+    <button class="btn secondary full" style="margin-top:12px" onclick="studentSelfRegistrationModal()">Quero me cadastrar como aluno</button>
+    <p class="small muted" style="margin-top:18px;text-align:center"><a href="#" onclick="cloudFirstSetupModal();return false">Primeira configuração da academia (Dono)</a></p>`;
+  setTimeout(()=>TonicaoGoogle.renderButton("googleLoginArea"),30);
+  return false;
+}
+async function cloudLoginAuth(){
+  try{
+    const r=await TonicaoRemoteAuth.login({username:document.getElementById("cloudEmail").value,password:document.getElementById("cloudPass").value});
+    await TonicaoAuth.loginFederated(r.user);
+    toast(`Bem-vindo, ${r.user.name}.`);await renderAuthGate();await renderAll();TonicaoCloud.schedule(300);
+  }catch(e){toast(e.message||"Falha no login.")}
+}
+async function cloudForgotPassword(){
+  const email=document.getElementById("cloudEmail")?.value.trim();
+  if(!email){toast("Digite seu e-mail no campo acima.");return}
+  try{await TonicaoRemoteAuth.sendPasswordReset(email);toast("Enviamos um link para criar nova senha no seu e-mail.")}catch(e){toast(e.message)}
+}
+function cloudFirstSetupModal(){
+  showModal(`<h3>Primeira configuração</h3><p class="small muted">Use só uma vez, para criar a conta do Dono. Depois disso ninguém mais consegue usar esta opção.</p>
+    <div class="field"><label>Nome da academia</label><input id="fsAcademy" value="${esc(localStorage.getItem("tonicao_pending_academy_name")||"Tonicão Team Sul da Ilha")}"></div>
+    <div class="field"><label>Seu nome</label><input id="fsName"></div>
+    <div class="field"><label>E-mail</label><input id="fsEmail" type="email" autocomplete="username"></div>
+    <div class="field"><label>Senha forte (9+ caracteres, com maiúscula, minúscula, número e símbolo)</label><input id="fsPass" type="password" autocomplete="new-password"></div>
+    <div class="field"><label>Repita a senha</label><input id="fsPass2" type="password" autocomplete="new-password"></div>
+    <button class="btn primary full" onclick="cloudFirstSetup()">Criar conta do Dono</button>`);
+}
+async function cloudFirstSetup(){
+  const name=document.getElementById("fsName").value.trim(),email=document.getElementById("fsEmail").value.trim(),pass=document.getElementById("fsPass").value;
+  if(!name||!email){toast("Preencha nome e e-mail.");return}
+  {const prob=TonicaoAuth.passwordProblem?TonicaoAuth.passwordProblem(pass):(pass.length<6?"A senha precisa ter pelo menos 6 caracteres.":"");if(prob){toast(prob);return}}
+  if(pass!==document.getElementById("fsPass2").value){toast("As senhas não conferem.");return}
+  try{
+    const r=await TonicaoRemoteAuth.firstSetup({name,email,password:pass,academyName:document.getElementById("fsAcademy").value.trim()});
+    await TonicaoAuth.loginFederated(r.user);
+    {const _s=await getSettings(),_pid=localStorage.getItem("tonicao_pending_academy_id");
+      _s.academyId=currentAcademyIdV027();
+      if(_pid===currentAcademyIdV027()){
+        _s.academyName=localStorage.getItem("tonicao_pending_academy_name")||document.getElementById("fsAcademy").value.trim();
+        _s.unitName=localStorage.getItem("tonicao_pending_unit_name")||"Unidade";
+        _s.accentColor=localStorage.getItem("tonicao_pending_academy_color")||"#2563eb";
+      }
+      await DB.rawPut("settings",_s);
+      ["tonicao_pending_academy_id","tonicao_pending_academy_name","tonicao_pending_unit_name","tonicao_pending_academy_color"].forEach(k=>localStorage.removeItem(k));
+    }
+    closeModal();toast("Academia configurada. Você é o Administrador/Dono.");await renderAuthGate();await renderAll();TonicaoCloud.schedule(300);
+  }catch(e){toast(e.message||"Falha na configuração.")}
+}
 async function bootstrapAuth(){
   try{
     await TonicaoAuth.bootstrapAdmin({
@@ -2419,9 +2553,40 @@ async function loginAuth(){
     await renderAuthGate();await renderAll();
   }catch(e){toast(e.message||"Falha no login.");}
 }
-async function logoutAuth(){
+async function accountMenu(){
+  const me=await TonicaoAuth.currentUser();if(!me)return;
+  const settings=await getSettings(),cloud=!!(window.TonicaoFirebase?.configured&&settings.cloudSessionToken);
+  const pending=cloud?(await DB.getPendingChanges()).length:0;
+  showModal(`<h3>Minha conta</h3>
+    <div class="list-item" style="cursor:default"><div class="icon">${me.role==="admin"?"🛡️":me.role==="professor"?"🥋":"👤"}</div>
+      <div><strong>${esc(me.name||"Usuário")}</strong><span class="small muted">${esc(TonicaoAuth.ROLE_LABEL[me.role]||me.role)}${me.email||me.username?` • ${esc(me.email||me.username)}`:""}</span></div></div>
+    ${pending?`<div class="notice grade" style="margin-top:10px"><strong>${pending} alteração(ões) ainda não enviada(s)</strong><div class="small">Vou tentar enviar antes de sair.</div></div>`:""}
+    <button class="btn primary full" style="margin-top:12px" onclick="logoutAuth({switchAccount:true})">🔄 Trocar de conta</button>
+    <button class="btn secondary full" style="margin-top:8px" onclick="logoutAuth()">🚪 Sair</button>`);
+}
+async function logoutAuth(opts={}){
+  const settings=await getSettings();
+  const cloud=!!(window.TonicaoFirebase?.configured&&settings.cloudSessionToken);
+  if(cloud){
+    // 1) tenta enviar o que ainda está no aparelho
+    let pending=(await DB.getPendingChanges()).length;
+    if(pending&&navigator.onLine){try{await TonicaoCloud.syncNow({silent:true})}catch(e){};pending=(await DB.getPendingChanges()).length}
+    if(pending&&!opts.force&&!confirm(`${pending} alteração(ões) ainda não foram enviadas${navigator.onLine?"":" (sem internet)"}.\nSe sair agora, elas serão perdidas.\n\nSair mesmo assim?`))return;
+  }
+  try{closeModal()}catch(e){}
+  try{await TonicaoRemoteAuth.logout()}catch(e){}
   await TonicaoAuth.logout();
+  if(cloud){
+    // 2) limpa os dados da academia deste aparelho: a próxima conta só vê o que tem permissão
+    for(const st of [...DB.syncableStores,"syncQueue","syncLog"]){try{await DB.clearStore(st)}catch(e){}}
+    const s=await getSettings();
+    for(const k of ["cloudCursors","cloudCursorsOwner","remoteUser","cloudSessionToken","cloudLastSync","cloudLastError","authUserId"])delete s[k];
+    await DB.rawPut("settings",s);
+    sessionStorage.setItem("tonicaoAfterLogout",opts.switchAccount?"switch":"logout");
+    location.reload();return;
+  }
   await renderAuthGate();
+  toast(opts.switchAccount?"Entre com a outra conta.":"Você saiu.");
 }
 
 async function processInviteFromUrl(){
@@ -2431,7 +2596,7 @@ async function processInviteFromUrl(){
   if(u?.role!=="aluno")return;
   try{
     await TonicaoSync.acceptInviteToken(token);
-    history.replaceState(null,"",location.pathname+location.hash);
+    {const _u=new URL(location.href);_u.searchParams.delete("invite");history.replaceState(null,"",_u.pathname+(_u.search||"")+_u.hash);}
     toast("Convite aplicado à sua conta.")
   }catch(e){}
 }
@@ -2449,12 +2614,14 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.23`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.32`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
-(async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();if(await renderAuthGate())await renderAll()})();
+(async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
 window.addEventListener("tonicao:data-synced",async()=>{try{await renderAll()}catch(e){}});
+window.addEventListener("load",()=>{const a=sessionStorage.getItem("tonicaoAfterLogout");if(a){sessionStorage.removeItem("tonicaoAfterLogout");setTimeout(()=>{toast(a==="switch"?"Entre com a outra conta.":"Você saiu.");document.getElementById("cloudEmail")?.focus()},900)}});
+window.addEventListener("tonicao:cloud-revoked",async()=>{toast("Sua conta foi desativada ou ainda aguarda liberação.");await logoutAuth({force:true})});
 window.addEventListener("tonicao:sync-rejected",e=>{const list=e.detail||[];const att=list.find(r=>r&&r.store==="attendance");if(att){toast(`Check-in não confirmado: ${att.reason||"recusado pelo servidor"}`);return}if(list.length)toast(`${list.length} alteração(ões) recusada(s) pelo servidor.`)});
 
 if("serviceWorker" in navigator){
@@ -2463,3 +2630,354 @@ if("serviceWorker" in navigator){
 window.addEventListener("load",()=>setTimeout(async()=>{
   if(new URLSearchParams(location.search).get("open")==="notifications" && await TonicaoAuth.currentUser()){goPage("more");renderMore("notifications")}
 },1000));
+
+/* ===== class-schedule.js ===== */
+/* v0.28 — Grade de horários fixa, reservas de presença e QR da aula que muda a cada minuto.
+   - Professor cadastra as turmas da semana (dia, horário, duração, trilha).
+   - Aluno marca "Vou nesta aula" (fica pendente) e o Professor confirma depois (Veio / Faltou).
+   - Aula aberta: QR em tela cheia; o código muda a cada 60 s; ler o QR (pelo app ou pela câmera
+     do celular) faz o check-in automático. */
+(()=>{
+  "use strict";
+  const DAYS=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const DAYS_LONG=["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
+  const ROTATE_MS=60000;
+  const DEVICE_KEY="tonicaoDeviceId";
+  const deviceId=(()=>{try{let d=localStorage.getItem(DEVICE_KEY);if(!d){d="dev-"+Math.random().toString(36).slice(2,10);localStorage.setItem(DEVICE_KEY,d)}return d}catch(e){return "dev-x"}})();
+
+  // ---------------- utilidades ----------------
+  const isoOf=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const dateOffset=n=>{const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()+n);return d};
+  const weekdayOf=iso=>new Date(iso+"T12:00:00").getDay();
+  const dayLabel=iso=>{const t=todayISO();if(iso===t)return "Hoje";if(iso===isoOf(dateOffset(1)))return "Amanhã";const d=new Date(iso+"T12:00:00");return `${DAYS_LONG[d.getDay()]} ${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`};
+  const endTime=(start,min)=>{const [h,m]=String(start||"00:00").split(":").map(Number);const t=h*60+m+Number(min||0);return `${String(Math.floor(t/60)%24).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`};
+  const trackOk=(sched,track)=>!sched.track||sched.track==="todos"||sched.track===(track||"adulto");
+  const bookingId=(scheduleId,date,studentId)=>`${scheduleId}_${date}_${studentId}`;
+  async function me(){try{return await TonicaoAuth.currentUser()}catch(e){return null}}
+  async function isCloud(){const s=await getSettings();return !!(window.TonicaoFirebase?.configured&&s.cloudSessionToken)}
+  async function schedules(){return (await DB.getAll("classSchedule")).filter(s=>s.active!==false).sort((a,b)=>String(a.start).localeCompare(String(b.start)))}
+  async function bookings(){return await DB.getAll("classBookings")}
+  const STATUS={pending:["⏳ aguardando confirmação","amber"],confirmed:["✅ presença confirmada","green"],absent:["❌ faltou","red"]};
+
+  // ---------------- link do QR ----------------
+  async function checkinLink(session,code){
+    let base="";try{base=await getPublicAppUrl()}catch(e){}
+    base=(base||location.href.split("?")[0].split("#")[0]).replace(/\/+$/,"/");
+    const u=new URL(base,location.href);u.search="";u.hash="";
+    u.searchParams.set("ci",session.id);u.searchParams.set("c",code);
+    return u.href;
+  }
+  function parseScanned(value){
+    const v=String(value||"").trim();
+    if(/^\d{6}$/.test(v))return {code:v,sessionId:""};
+    try{const u=new URL(v);const c=u.searchParams.get("c")||"";if(/^\d{6}$/.test(c))return {code:c,sessionId:u.searchParams.get("ci")||""}}catch(e){}
+    return {code:v,sessionId:""};
+  }
+  window.parseScannedCheckinV028=parseScanned;
+
+  // Desenha o QR com o LINK (funciona pela câmera normal do celular)
+  window.drawSessionQR=async function(session,hostId="sessionQr",size=220){
+    const box=document.getElementById(hostId);if(!box||!session)return;
+    box.innerHTML="";
+    if(!session.code){box.innerHTML=`<div class="small muted">Código disponível só no aparelho do Professor.</div>`;return}
+    const link=await checkinLink(session,session.code);
+    if(window.QRCode){try{new QRCode(box,{text:link,width:size,height:size,correctLevel:QRCode.CorrectLevel.M});return}catch(e){}}
+    box.innerHTML=`<div class="small muted">QR indisponível neste aparelho. Use o código abaixo.</div>`;
+  };
+
+  // ---------------- abrir aula (manual ou pela grade) ----------------
+  async function createSession({title,duration,scheduleId=""}){
+    if(!(await guard("attendance")))return null;
+    const now=new Date(),exp=new Date(now.getTime()+Number(duration||90)*60000);
+    const cur=activeSession(await getSessions());if(cur)await closeClassSession(cur.id,true);
+    const s={id:uid("cls"),title,code:sixDigitCode(),prevCode:"",nextCode:sixDigitCode(),codeChangedAt:now.toISOString(),hostDevice:deviceId,
+      scheduleId,date:todayISO(),startTime:now.toTimeString().slice(0,5),createdAt:now.toISOString(),expiresAt:exp.toISOString(),status:"open"};
+    await DB.put("classSessions",s);
+    try{TonicaoCloud.schedule(200)}catch(e){}
+    return s;
+  }
+  window.openClassSession=async function(){
+    const title=document.getElementById("classTitle")?.value?.trim()||"Treino de Jiu-Jitsu";
+    const duration=+(document.getElementById("classDuration")?.value||90);
+    const s=await createSession({title,duration});if(!s)return;
+    toast("Aula aberta. O código muda a cada minuto.");await renderAll();
+  };
+  window.openScheduledClass=async function(scheduleId){
+    const sc=await DB.getOne("classSchedule",scheduleId);if(!sc)return;
+    const s=await createSession({title:`${sc.name} • ${sc.start}`,duration:sc.duration||90,scheduleId});if(!s)return;
+    toast("Aula aberta. Deixe o QR à vista dos alunos.");await renderAll();showQrFullscreen();
+  };
+
+  // ---------------- código que muda a cada minuto ----------------
+  async function rotateIfNeeded(){
+    const s=activeSession(await getSessions());if(!s||!s.code||s.hostDevice!==deviceId)return;
+    const cloud=await isCloud();
+    if(cloud&&!navigator.onLine)return; // sem internet o servidor não saberia o código novo: mantém o atual
+    if(Date.now()-Date.parse(s.codeChangedAt||s.createdAt)<ROTATE_MS)return;
+    // o próximo código já está no servidor, então o novo QR vale no mesmo instante
+    s.prevCode=s.code;s.code=s.nextCode||sixDigitCode();s.nextCode=sixDigitCode();s.codeChangedAt=new Date().toISOString();
+    await DB.put("classSessions",s);
+    try{TonicaoCloud.schedule(300)}catch(e){}
+    refreshCodeViews(s);
+  }
+  function refreshCodeViews(s){
+    document.querySelectorAll(".session-code").forEach(el=>el.textContent=s.code);
+    if(document.getElementById("sessionQr"))drawSessionQR(s,"sessionQr",220);
+    if(document.getElementById("fsQr"))drawSessionQR(s,"fsQr",Math.min(window.innerWidth*0.8,window.innerHeight*0.5,520));
+    const c=document.getElementById("fsCode");if(c)c.textContent=s.code;
+  }
+  setInterval(()=>{rotateIfNeeded().catch(()=>{});tickCountdown().catch(()=>{})},1000);
+  async function tickCountdown(){
+    const el=document.getElementById("fsCountdown")||document.getElementById("codeCountdown");if(!el)return;
+    const s=activeSession(await getSessions());if(!s)return;
+    const left=Math.max(0,Math.ceil((ROTATE_MS-(Date.now()-Date.parse(s.codeChangedAt||s.createdAt)))/1000));
+    const txt=s.hostDevice===deviceId?`novo código em ${left}s`:"código controlado por outro aparelho";
+    document.querySelectorAll("#fsCountdown,#codeCountdown").forEach(x=>x.textContent=txt);
+  }
+
+  // ---------------- tela cheia para a porta do tatame ----------------
+  let unwatch=null;
+  window.showQrFullscreen=async function(){
+    const s=activeSession(await getSessions());if(!s){toast("Abra uma aula primeiro.");return}
+    let o=document.getElementById("qrFull");
+    if(!o){o=document.createElement("div");o.id="qrFull";document.body.appendChild(o)}
+    o.setAttribute("style","position:fixed;inset:0;z-index:2500;background:#fff;color:#111;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:calc(16px + env(safe-area-inset-top,0px)) 16px 16px;overflow:auto;text-align:center");
+    o.innerHTML=`<div style="font:800 22px system-ui,sans-serif">${esc(s.title)}</div>
+      <div style="font:600 15px system-ui,sans-serif;color:#555;margin:4px 0 8px">Aponte a câmera do celular para fazer o check-in</div>
+      <div id="fsQr" style="background:#fff;padding:8px"></div>
+      <div id="fsCode" style="font:800 44px ui-monospace,monospace;letter-spacing:8px;margin-top:6px">${esc(s.code||"")}</div>
+      <div id="fsCountdown" style="font:600 14px system-ui,sans-serif;color:#b45309"></div>
+      <div id="fsPresent" style="margin-top:12px;width:100%;max-width:560px;text-align:left"></div>
+      <button class="btn secondary" style="margin-top:14px" onclick="closeQrFullscreen()">Fechar tela cheia</button>`;
+    try{await navigator.wakeLock?.request("screen")}catch(e){}
+    drawSessionQR(s,"fsQr",Math.min(window.innerWidth*0.8,window.innerHeight*0.5,520));
+    renderPresent(s.id);tickCountdown();
+    if(unwatch)unwatch();
+    unwatch=TonicaoCloud.watchSession?TonicaoCloud.watchSession(s.id,()=>renderPresent(s.id)):null;
+  };
+  window.closeQrFullscreen=function(){document.getElementById("qrFull")?.remove();if(unwatch){unwatch();unwatch=null}renderAll()};
+  async function renderPresent(sessionId){
+    const host=document.getElementById("fsPresent");if(!host)return;
+    const att=(await DB.getAll("attendance")).filter(a=>a.sessionId===sessionId);
+    const students=await DB.getAll("students");const name=id=>students.find(s=>s.id===id)?.name||"Aluno";
+    host.innerHTML=`<div style="font:800 16px system-ui,sans-serif;margin-bottom:6px">✅ Presentes: ${att.filter(a=>a.status==="approved").length}${att.some(a=>a.status==="pending")?` • ⏳ confirmando: ${att.filter(a=>a.status==="pending").length}`:""}</div>`+
+      att.sort((a,b)=>String(b.time).localeCompare(String(a.time))).slice(0,12).map(a=>`<div style="padding:6px 10px;border-radius:10px;background:#f3f4f6;margin:3px 0;font:600 15px system-ui,sans-serif">${a.status==="approved"?"✅":"⏳"} ${esc(name(a.studentId))} <span style="color:#777;font-weight:400">${esc(a.time||"")}</span></div>`).join("");
+  }
+  window.addEventListener("tonicao:data-synced",()=>{if(!document.getElementById("qrFull"))return;getSessions().then(ss=>{const s=activeSession(ss);if(s)renderPresent(s.id)})});
+
+  // ---------------- check-in pelo link (câmera do celular) ----------------
+  (function captureLink(){
+    const p=new URLSearchParams(location.search);const ci=p.get("ci"),c=p.get("c");
+    if(ci&&/^\d{6}$/.test(c||"")){
+      sessionStorage.setItem("tonicaoPendingCheckin",JSON.stringify({sessionId:ci,code:c,at:Date.now()}));
+      const u=new URL(location.href);u.searchParams.delete("ci");u.searchParams.delete("c");history.replaceState(null,"",u.pathname+(u.search||"")+u.hash);
+    }
+  })();
+  async function processPendingLink(){
+    const raw=sessionStorage.getItem("tonicaoPendingCheckin");if(!raw)return false;
+    const p=JSON.parse(raw);if(Date.now()-p.at>30*60000){sessionStorage.removeItem("tonicaoPendingCheckin");return false}
+    const u=await me();if(!u)return false; // espera o login
+    sessionStorage.removeItem("tonicaoPendingCheckin");
+    if(u.role!=="aluno"){toast("Este QR é para o check-in dos alunos.");return true}
+    if(typeof window.familyCheckinEntryV032==="function")await window.familyCheckinEntryV032(p.sessionId,p.code);
+    else await checkinBySession(u.studentId,p.sessionId,p.code);
+    return true;
+  }
+  (async()=>{for(let i=0;i<600;i++){try{if(await processPendingLink())return}catch(e){console.warn(e)}await new Promise(r=>setTimeout(r,1000))}})();
+
+  async function checkinBySession(studentId,sessionId,code){
+    if(!studentId){toast("Sua conta ainda não está ligada a uma ficha de aluno. Fale com o Professor.");return}
+    const s=await DB.getOne("students",studentId);
+    if(s&&["pendente","verificar","bloqueado"].includes(s.payment)){toast("Check-in bloqueado: pagamento precisa ser verificado pelo Professor.");return}
+    if(await isCloud()){
+      const att=await DB.getAll("attendance");
+      if(att.some(a=>a.studentId===studentId&&a.sessionId===sessionId)){toast("Você já fez check-in nesta aula. ✅");return}
+      await registerAttendance(studentId,"qr-codigo",sessionId,{checkinCode:code});
+      try{await TonicaoCloud.syncNow({silent:true})}catch(e){}
+      const done=(await DB.getAll("attendance")).find(a=>a.studentId===studentId&&a.sessionId===sessionId);
+      if(done)showBigOk("Check-in feito!","Sua presença foi registrada nesta aula.");
+      return;
+    }
+    await studentCheckinByCode(studentId,code);
+  }
+  function showBigOk(title,sub){
+    showModal(`<div style="text-align:center;padding:10px 0"><div style="font-size:64px">✅</div><h3 style="margin:6px 0">${esc(title)}</h3><p class="muted">${esc(sub)}</p><button class="btn primary full" onclick="closeModal()">OK</button></div>`);
+  }
+
+  // leitor de QR do app: aceita o código ou o link
+  const baseStudentCheckin=window.studentCheckinByCode;
+  window.studentCheckinByCode=async function(id,value){
+    const {code,sessionId}=parseScanned(value);
+    if(sessionId&&(await isCloud()))return checkinBySession(id,sessionId,code);
+    const session=activeSession(await getSessions());
+    if(session&&session.code&&code!==session.code&&[session.prevCode,session.nextCode].includes(code))return baseStudentCheckin(id,session.code);
+    return baseStudentCheckin(id,code);
+  };
+
+  // ---------------- confirmar reservas quando a presença é lançada ----------------
+  async function confirmBookingFor(studentId,sessionId,date){
+    const sess=sessionId?await DB.getOne("classSessions",sessionId):null;
+    const d=date||sess?.date||todayISO();
+    const list=(await bookings()).filter(b=>b.studentId===studentId&&b.date===d&&b.status==="pending"&&(!sess?.scheduleId||b.scheduleId===sess.scheduleId));
+    for(const b of list){b.status="confirmed";b.confirmedAt=new Date().toISOString();b.sessionId=sessionId||"";await DB.put("classBookings",b)}
+  }
+  const baseAward=window.awardAttendancePoints;
+  window.awardAttendancePoints=async function(studentId,sessionId){
+    await baseAward(studentId,sessionId);
+    try{await confirmBookingFor(studentId,sessionId)}catch(e){}
+  };
+  const baseRegister=window.registerAttendance;
+  window.registerAttendance=async function(id,source="professor",sessionId=null,extra={}){
+    const r=await baseRegister(id,source,sessionId,extra);
+    const u=await me();
+    if(u&&u.role!=="aluno"){try{await confirmBookingFor(id,sessionId)}catch(e){}}
+    return r;
+  };
+
+  // ---------------- grade de horários (Professor) ----------------
+  window.scheduleManagerModal=async function(){
+    if(!(await guard("attendance")))return;
+    const list=(await DB.getAll("classSchedule")).sort((a,b)=>(a.days?.[0]??9)-(b.days?.[0]??9)||String(a.start).localeCompare(String(b.start)));
+    showModal(`<h3>📅 Grade de horários</h3><p class="small muted">Turmas fixas da semana. Valem daqui para frente até você mudar.</p>
+      <div class="list">${list.length?list.map(s=>`<div class="list-item" onclick="scheduleEditModal('${esc(s.id)}')" style="${s.active===false?"opacity:.5":""}"><div class="icon">🥋</div><div><strong>${esc(s.start)}–${esc(endTime(s.start,s.duration))} • ${esc(s.name)}</strong><span class="small muted">${(s.days||[]).map(d=>DAYS[d]).join(", ")} • ${s.track==="kids"?"Kids":s.track==="adulto"?"Adulto":"Todos"}${s.active===false?" • pausada":""}</span></div></div>`).join(""):`<div class="notice">Nenhuma turma cadastrada ainda.</div>`}</div>
+      <button class="btn primary full" style="margin-top:12px" onclick="scheduleEditModal('')">+ Nova turma</button>`);
+  };
+  window.scheduleEditModal=async function(id){
+    if(!(await guard("attendance")))return;
+    const s=id?await DB.getOne("classSchedule",id):{name:"Jiu-Jitsu",days:[1,3,5],start:"19:00",duration:90,track:"todos",active:true};
+    showModal(`<h3>${id?"Editar turma":"Nova turma"}</h3>
+      <div class="field"><label>Nome da turma</label><input id="scName" value="${esc(s.name||"")}" placeholder="Ex.: Adulto, Kids, Competição"></div>
+      <div class="field"><label>Dias da semana</label><div style="display:flex;flex-wrap:wrap;gap:6px">${DAYS.map((d,i)=>`<label style="display:flex;align-items:center;gap:4px;padding:8px 10px;border:1px solid #ddd;border-radius:999px"><input type="checkbox" class="scDay" value="${i}" ${(s.days||[]).includes(i)?"checked":""}> ${d}</label>`).join("")}</div></div>
+      <div class="field"><label>Horário de início</label><input id="scStart" type="time" value="${esc(s.start||"19:00")}"></div>
+      <div class="field"><label>Duração</label><select id="scDuration">${[45,60,75,90,120].map(m=>`<option value="${m}" ${Number(s.duration)===m?"selected":""}>${m>=60?`${Math.floor(m/60)}h${m%60?String(m%60).padStart(2,"0"):""}`:m+" min"}</option>`).join("")}</select></div>
+      <div class="field"><label>Para quem</label><select id="scTrack"><option value="todos" ${s.track==="todos"||!s.track?"selected":""}>Todos</option><option value="adulto" ${s.track==="adulto"?"selected":""}>Adulto</option><option value="kids" ${s.track==="kids"?"selected":""}>Kids</option></select></div>
+      <div class="field"><label>Situação</label><select id="scActive"><option value="1" ${s.active!==false?"selected":""}>Ativa</option><option value="0" ${s.active===false?"selected":""}>Pausada</option></select></div>
+      <button class="btn primary full" onclick="scheduleSave('${esc(id||"")}')">Salvar</button>
+      ${id?`<button class="btn danger full" style="margin-top:8px" onclick="scheduleDelete('${esc(id)}')">Excluir turma</button>`:""}
+      <button class="btn secondary full" style="margin-top:8px" onclick="scheduleManagerModal()">Voltar</button>`);
+  };
+  window.scheduleSave=async function(id){
+    if(!(await guard("attendance")))return;
+    const days=[...document.querySelectorAll(".scDay:checked")].map(x=>Number(x.value)).sort();
+    const name=document.getElementById("scName").value.trim(),start=document.getElementById("scStart").value;
+    if(!name||!start||!days.length){toast("Informe nome, horário e pelo menos um dia.");return}
+    const rec={...(id?await DB.getOne("classSchedule",id):{}),id:id||uid("sch"),name,days,start,duration:Number(document.getElementById("scDuration").value),track:document.getElementById("scTrack").value,active:document.getElementById("scActive").value==="1"};
+    await DB.put("classSchedule",rec);toast("Turma salva.");await renderAll();scheduleManagerModal();
+  };
+  window.scheduleDelete=async function(id){
+    if(!(await guard("attendance")))return;
+    if(!confirm("Excluir esta turma da grade? As presenças já registradas continuam."))return;
+    await DB.removeOne("classSchedule",id);toast("Turma excluída.");await renderAll();scheduleManagerModal();
+  };
+
+  // ---------------- reservas (Aluno) ----------------
+  window.bookClass=async function(scheduleId,date){
+    const u=await me();if(!u?.studentId){toast("Sua conta ainda não está ligada a uma ficha de aluno.");return}
+    const id=bookingId(scheduleId,date,u.studentId);
+    const cur=await DB.getOne("classBookings",id);
+    if(cur&&cur.status!=="pending"){toast("Esta aula já foi confirmada pelo Professor.");return}
+    await DB.put("classBookings",{id,scheduleId,date,studentId:u.studentId,status:"pending",createdAt:new Date().toISOString()});
+    toast("Presença marcada. O Professor confirma depois da aula.");renderAll();
+  };
+  window.unbookClass=async function(scheduleId,date){
+    const u=await me();if(!u?.studentId)return;
+    const id=bookingId(scheduleId,date,u.studentId),cur=await DB.getOne("classBookings",id);
+    if(!cur)return;if(cur.status!=="pending"){toast("Já confirmada pelo Professor.");return}
+    await DB.removeOne("classBookings",id);toast("Marcação cancelada.");renderAll();
+  };
+
+  // ---------------- confirmar presenças (Professor) ----------------
+  window.bookingsModal=async function(scheduleId,date){
+    if(!(await guard("attendance")))return;
+    const sc=await DB.getOne("classSchedule",scheduleId);const students=await DB.getAll("students");
+    const list=(await bookings()).filter(b=>b.scheduleId===scheduleId&&b.date===date);
+    const name=id=>students.find(s=>s.id===id)?.name||"Aluno";
+    showModal(`<h3>Presenças • ${esc(sc?.name||"Turma")} ${esc(sc?.start||"")}</h3><p class="small muted">${esc(dayLabel(date))} • ${list.length} aluno(s) marcaram</p>
+      <div class="list">${list.length?list.sort((a,b)=>name(a.studentId).localeCompare(name(b.studentId))).map(b=>`<div class="list-item" style="cursor:default"><div class="meta"><strong>${esc(name(b.studentId))}</strong><span class="small muted">${STATUS[b.status]?.[0]||b.status}</span></div>${b.status==="pending"?`<div class="actions" style="flex-wrap:nowrap"><button class="btn green" onclick="decideBooking('${esc(b.id)}',true)">✅ Veio</button><button class="btn secondary" onclick="decideBooking('${esc(b.id)}',false)">❌</button></div>`:""}</div>`).join(""):`<div class="notice">Ninguém marcou presença para esta aula.</div>`}</div>
+      ${list.some(b=>b.status==="pending")?`<button class="btn primary full" style="margin-top:12px" onclick="confirmAllBookings('${esc(scheduleId)}','${esc(date)}')">✅ Confirmar todos os pendentes</button>`:""}`);
+  };
+  async function decide(b,came){
+    if(b.status!=="pending")return;
+    if(came){
+      const att=await DB.getAll("attendance"),sess=await getSessions();
+      const schedOf=a=>a.scheduleId||sess.find(x=>x.id===a.sessionId)?.scheduleId||"";
+      const has=att.some(a=>a.studentId===b.studentId&&a.date===b.date&&a.status!=="rejected"&&(a.bookingId===b.id||schedOf(a)===b.scheduleId));
+      if(!has){
+        const sc=await DB.getOne("classSchedule",b.scheduleId);
+        await DB.put("attendance",{id:"att-bk-"+b.id,studentId:b.studentId,date:b.date,time:sc?.start||"",source:"reserva",scheduleId:b.scheduleId,bookingId:b.id,status:"approved"});
+        // pontos com id fixo por reserva: nunca contam duas vezes
+        if(typeof window.awardAttendanceEffectsV027==="function")await window.awardAttendanceEffectsV027(b.studentId,null,"att-bk-"+b.id);
+        else await baseAward(b.studentId,null);
+      }
+      b.status="confirmed";
+    }else b.status="absent";
+    b.decidedAt=new Date().toISOString();await DB.put("classBookings",b);
+  }
+  window.decideBooking=async function(id,came){
+    if(!(await guard("attendance")))return;
+    const b=await DB.getOne("classBookings",id);if(!b)return;
+    await decide(b,came);toast(came?"Presença confirmada.":"Marcado como falta.");
+    await renderAll();bookingsModal(b.scheduleId,b.date);
+  };
+  window.confirmAllBookings=async function(scheduleId,date){
+    if(!(await guard("attendance")))return;
+    const list=(await bookings()).filter(b=>b.scheduleId===scheduleId&&b.date===date&&b.status==="pending");
+    for(const b of list)await decide(b,true);
+    toast(`${list.length} presença(s) confirmada(s).`);await renderAll();bookingsModal(scheduleId,date);
+  };
+  window.pendingBookingsModal=async function(){
+    if(!(await guard("attendance")))return;
+    const today=todayISO();const sch=await DB.getAll("classSchedule");
+    const groups={};for(const b of (await bookings()).filter(b=>b.status==="pending"&&b.date<=today)){const k=b.scheduleId+"|"+b.date;(groups[k]=groups[k]||[]).push(b)}
+    const keys=Object.keys(groups).sort().reverse();
+    showModal(`<h3>⏳ Presenças para confirmar</h3><div class="list">${keys.length?keys.map(k=>{const [sid,date]=k.split("|");const sc=sch.find(x=>x.id===sid);return `<div class="list-item" onclick="bookingsModal('${esc(sid)}','${esc(date)}')"><div class="icon">📋</div><div><strong>${esc(dayLabel(date))} • ${esc(sc?.start||"")} ${esc(sc?.name||"Turma")}</strong><span class="small muted">${groups[k].length} aluno(s) aguardando</span></div></div>`}).join(""):`<div class="notice">Nada pendente. 👍</div>`}</div>`);
+  };
+
+  // ---------------- telas ----------------
+  async function professorSection(){
+    const today=todayISO(),wd=weekdayOf(today);
+    const sch=(await schedules()).filter(s=>(s.days||[]).includes(wd));
+    const bk=await bookings();const session=activeSession(await getSessions());
+    const pend=bk.filter(b=>b.status==="pending"&&b.date<=today).length;
+    return `<div class="section-title"><h2>📅 Aulas de hoje</h2><button class="btn secondary" onclick="scheduleManagerModal()">⚙️ Grade</button></div>
+      ${pend?`<div class="notice grade" onclick="pendingBookingsModal()" style="cursor:pointer"><strong>⏳ ${pend} presença(s) marcada(s) para confirmar</strong><div class="small">Toque para ver e confirmar.</div></div>`:""}
+      <div class="list">${sch.length?sch.map(s=>{const n=bk.filter(b=>b.scheduleId===s.id&&b.date===today).length;const open=session&&session.scheduleId===s.id;
+        return `<div class="list-item" style="cursor:default"><div class="icon">🥋</div><div class="meta"><strong>${esc(s.start)}–${esc(endTime(s.start,s.duration))} • ${esc(s.name)}</strong><span class="small muted">${n} aluno(s) marcaram presença</span></div>
+          <div class="actions" style="flex-wrap:nowrap">${open?`<button class="btn green" onclick="showQrFullscreen()">📺 QR</button>`:`<button class="btn primary" onclick="openScheduledClass('${esc(s.id)}')">Abrir aula</button>`}<button class="btn secondary" onclick="bookingsModal('${esc(s.id)}','${today}')">📋</button></div></div>`}).join("")
+        :`<div class="notice">${(await schedules()).length?"Nenhuma turma na grade para hoje.":"Cadastre as turmas fixas da semana em ⚙️ Grade."}</div>`}</div>`;
+  }
+  async function studentSection(){
+    const cur=await getCurrentStudent();if(!cur)return "";
+    const sch=(await schedules()).filter(s=>trackOk(s,cur.graduationTrack));
+    if(!sch.length)return `<div class="section-title"><h2>📅 Aulas da semana</h2></div><div class="notice">O Professor ainda não cadastrou a grade de horários.</div>`;
+    const bk=(await bookings()).filter(b=>b.studentId===cur.id);
+    const now=new Date(),nowHM=now.toTimeString().slice(0,5);
+    let rows="";
+    for(let i=0;i<7;i++){
+      const iso=isoOf(dateOffset(i)),wd=weekdayOf(iso);
+      const day=sch.filter(s=>(s.days||[]).includes(wd)).filter(s=>i>0||endTime(s.start,s.duration)>=nowHM);
+      if(!day.length)continue;
+      rows+=`<div class="small muted" style="margin:10px 2px 4px;font-weight:700">${esc(dayLabel(iso))}</div>`+day.map(s=>{
+        const b=bk.find(x=>x.scheduleId===s.id&&x.date===iso);const st=b?STATUS[b.status]:null;
+        return `<div class="list-item" style="cursor:default"><div class="icon">🥋</div><div class="meta"><strong>${esc(s.start)} • ${esc(s.name)}</strong><span class="small muted">${st?st[0]:"até "+esc(endTime(s.start,s.duration))}</span></div>
+          ${!b?`<button class="btn primary" onclick="bookClass('${esc(s.id)}','${iso}')">Vou</button>`:b.status==="pending"?`<button class="btn secondary" onclick="unbookClass('${esc(s.id)}','${iso}')">Cancelar</button>`:""}</div>`}).join("");
+    }
+    return `<div class="section-title"><h2>📅 Aulas da semana</h2></div><p class="small muted" style="margin:0 2px 6px">Marque as aulas em que você vai. Na aula, leia o QR para confirmar na hora.</p><div class="list">${rows||`<div class="notice">Sem aulas nos próximos dias.</div>`}</div>`;
+  }
+  const baseRenderCheckin=window.renderCheckin;
+  window.renderCheckin=async function(){
+    await baseRenderCheckin();
+    const host=document.getElementById("checkin");if(!host)return;
+    const settings=await getSettings();
+    try{
+      if(settings.role==="aluno"){host.insertAdjacentHTML("beforeend",await studentSection());return}
+      host.insertAdjacentHTML("afterbegin",await professorSection());
+      const session=activeSession(await getSessions());
+      const card=host.querySelector(".session-card");
+      if(session&&card&&!card.querySelector("#codeCountdown")){
+        card.querySelector(".session-code")?.insertAdjacentHTML("afterend",`<div id="codeCountdown" class="small" style="color:#b45309;font-weight:700"></div>`);
+        card.querySelector(".actions")?.insertAdjacentHTML("afterbegin",`<button class="btn green" onclick="showQrFullscreen()">📺 Tela cheia</button>`);
+      }
+    }catch(e){console.warn("Grade",e)}
+  };
+})();
