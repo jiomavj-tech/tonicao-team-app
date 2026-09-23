@@ -360,7 +360,7 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.35</p>
+        <p id="topSubtitle">Piloto offline-first • v0.36</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -4316,7 +4316,7 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.35`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.36`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
@@ -4594,8 +4594,14 @@ window.addEventListener("load",()=>setTimeout(async()=>{
     const sc=await DB.getOne("classSchedule",scheduleId);const students=await DB.getAll("students");
     const list=(await bookings()).filter(b=>b.scheduleId===scheduleId&&b.date===date);
     const name=id=>students.find(s=>s.id===id)?.name||"Aluno";
-    showModal(`<h3>Presenças • ${esc(sc?.name||"Turma")} ${esc(sc?.start||"")}</h3><p class="small muted">${esc(dayLabel(date))} • ${list.length} aluno(s) marcaram</p>
-      <div class="list">${list.length?list.sort((a,b)=>name(a.studentId).localeCompare(name(b.studentId))).map(b=>`<div class="list-item" style="cursor:default"><div class="meta"><strong>${esc(name(b.studentId))}</strong><span class="small muted">${STATUS[b.status]?.[0]||b.status}</span></div>${b.status==="pending"?`<div class="actions" style="flex-wrap:nowrap"><button class="btn green" onclick="decideBooking('${esc(b.id)}',true)">✅ Veio</button><button class="btn secondary" onclick="decideBooking('${esc(b.id)}',false)">❌</button></div>`:""}</div>`).join(""):`<div class="notice">Ninguém marcou presença para esta aula.</div>`}</div>
+    const sessIds=(await getSessions()).filter(x=>x.date===date&&(x.scheduleId===scheduleId||!scheduleId)).map(x=>x.id);
+    const att=(await getAttendance()).filter(a=>a.date===date&&(sessIds.includes(a.sessionId)||a.scheduleId===scheduleId)).sort((a,b)=>String(a.time).localeCompare(String(b.time)));
+    const marked=new Set(att.map(a=>a.studentId));
+    showModal(`<h3>Presenças • ${esc(sc?.name||"Turma")} ${esc(sc?.start||"")}</h3><p class="small muted">${esc(dayLabel(date))}</p>
+      <div class="section-title"><h2>✅ Fizeram check-in (${att.length})</h2></div>
+      <div class="list">${att.length?att.map(a=>`<div class="list-item" style="cursor:default"><div class="icon">${a.status==="approved"?"✅":"⏳"}</div><div class="meta"><strong>${esc(name(a.studentId))}</strong><span class="small muted">${esc(a.time||"")} • ${a.status==="approved"?"confirmado":"aguardando sincronizar"}${a.source==="professor"?" • manual":""}</span></div></div>`).join(""):`<div class="notice small">Ninguém fez check-in ainda. Abra a aula e mostre o QR.</div>`}</div>
+      <div class="section-title" style="margin-top:12px"><h2>📅 Marcaram antes (${list.length})</h2></div>
+      <div class="list">${list.length?list.sort((a,b)=>name(a.studentId).localeCompare(name(b.studentId))).map(b=>`<div class="list-item" style="cursor:default"><div class="meta"><strong>${esc(name(b.studentId))}${marked.has(b.studentId)?" ✅":""}</strong><span class="small muted">${STATUS[b.status]?.[0]||b.status}</span></div>${b.status==="pending"?`<div class="actions" style="flex-wrap:nowrap"><button class="btn green" onclick="decideBooking('${esc(b.id)}',true)">✅ Veio</button><button class="btn secondary" onclick="decideBooking('${esc(b.id)}',false)">❌</button></div>`:""}</div>`).join(""):`<div class="notice">Ninguém marcou presença antes pelo app.</div>`}</div>
       ${list.some(b=>b.status==="pending")?`<button class="btn primary full" style="margin-top:12px" onclick="confirmAllBookings('${esc(scheduleId)}','${esc(date)}')">✅ Confirmar todos os pendentes</button>`:""}`);
   };
   async function decide(b,came){
@@ -4639,13 +4645,15 @@ window.addEventListener("load",()=>setTimeout(async()=>{
   async function professorSection(){
     const today=todayISO(),wd=weekdayOf(today);
     const sch=(await schedules()).filter(s=>(s.days||[]).includes(wd));
-    const bk=await bookings();const session=activeSession(await getSessions());
+    const bk=await bookings();const allSessions=await getSessions();const session=activeSession(allSessions);const att=await getAttendance();
     const pend=bk.filter(b=>b.status==="pending"&&b.date<=today).length;
     return `<div class="section-title"><h2>📅 Aulas de hoje</h2><button class="btn secondary" onclick="scheduleManagerModal()">⚙️ Grade</button></div>
       ${pend?`<div class="notice grade" onclick="pendingBookingsModal()" style="cursor:pointer"><strong>⏳ ${pend} presença(s) marcada(s) para confirmar</strong><div class="small">Toque para ver e confirmar.</div></div>`:""}
-      <div class="list">${sch.length?sch.map(s=>{const n=bk.filter(b=>b.scheduleId===s.id&&b.date===today).length;const open=session&&session.scheduleId===s.id;
-        return `<div class="list-item" style="cursor:default"><div class="icon">🥋</div><div class="meta"><strong>${esc(s.start)}–${esc(endTime(s.start,s.duration))} • ${esc(s.name)}</strong><span class="small muted">${n} aluno(s) marcaram presença</span></div>
-          <div class="actions" style="flex-wrap:nowrap">${open?`<button class="btn green" onclick="showQrFullscreen()">📺 QR</button>`:`<button class="btn primary" onclick="openScheduledClass('${esc(s.id)}')">Abrir aula</button>`}<button class="btn secondary" onclick="bookingsModal('${esc(s.id)}','${today}')">📋</button></div></div>`}).join("")
+      <div class="list">${sch.length?await Promise.all(sch.map(async s=>{const n=bk.filter(b=>b.scheduleId===s.id&&b.date===today).length;const open=session&&session.scheduleId===s.id;
+        const ids=allSessions.filter(x=>x.date===today&&x.scheduleId===s.id).map(x=>x.id);
+        const pres=att.filter(a=>a.date===today&&(ids.includes(a.sessionId)||a.scheduleId===s.id)).length;
+        return `<div class="list-item" style="cursor:default"><div class="icon">🥋</div><div class="meta"><strong>${esc(s.start)}–${esc(endTime(s.start,s.duration))} • ${esc(s.name)}</strong><span class="small muted">✅ ${pres} presente(s)${n?` • ${n} marcaram antes`:""}</span></div>
+          <div class="actions" style="flex-wrap:nowrap">${open?`<button class="btn green" onclick="showQrFullscreen()">📺 QR</button>`:`<button class="btn primary" onclick="openScheduledClass('${esc(s.id)}')">Abrir aula</button>`}<button class="btn secondary" onclick="bookingsModal('${esc(s.id)}','${today}')">📋</button></div></div>`})).then(x=>x.join(""))
         :`<div class="notice">${(await schedules()).length?"Nenhuma turma na grade para hoje.":"Cadastre as turmas fixas da semana em ⚙️ Grade."}</div>`}</div>`;
   }
   async function studentSection(){
