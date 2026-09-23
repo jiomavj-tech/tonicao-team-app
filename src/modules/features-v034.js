@@ -54,6 +54,64 @@
     }catch(e){toast(e.message||"Não foi possível bloquear.")}
   };
 
+  // ---------- v0.35: Professor cria o acesso com e-mail e senha ----------
+  function suggestPass(){
+    const w=["Tatame","Kimono","Guarda","Raspagem","Faixa","Berimbolo"][Math.floor(Math.random()*6)];
+    return `${w}@${Math.floor(10000+Math.random()*90000)}`; // sempre 9+ caracteres, com maiúscula, número e símbolo
+  }
+  window.newStudentAccountV035=async function(studentId=""){
+    if(!(await guard("manage_students")))return;
+    const users=await remoteUsers().catch(()=>[]);
+    const taken=new Set(users.filter(u=>u.studentId).map(u=>u.studentId));
+    const students=(await getStudents()).filter(s=>s.active!==false).sort((a,b)=>a.name.localeCompare(b.name));
+    showModal(`<h3>➕ Criar acesso do aluno</h3><p class="small muted">Você define a senha e manda para ele pelo WhatsApp. Ele pode trocar depois em "Esqueci a senha".</p>
+      <div class="field"><label>Aluno</label><select id="naStudent" onchange="naFillEmailV035()">${students.map(s=>`<option value="${esc(s.id)}" data-email="${esc(s.email||"")}" ${s.id===studentId?"selected":""}>${esc(s.name)}${taken.has(s.id)?" (já tem acesso)":""}</option>`).join("")}</select></div>
+      <div class="field"><label>E-mail do aluno</label><input id="naEmail" type="email" placeholder="aluno@email.com" value="${esc(students.find(s=>s.id===studentId)?.email||"")}"></div>
+      <div class="field"><label>Senha</label><div style="display:flex;gap:8px"><input id="naPass" style="flex:1" value="${suggestPass()}"><button class="btn secondary" type="button" onclick="document.getElementById('naPass').value=['Tatame','Kimono','Guarda','Raspagem','Faixa','Berimbolo'][Math.floor(Math.random()*6)]+'@'+Math.floor(10000+Math.random()*90000)">🎲</button></div>
+        <p class="small muted" style="margin-top:6px">Anote ou mande agora: depois de criada, a senha não pode mais ser vista.</p></div>
+      <button class="btn primary full" onclick="saveNewStudentAccountV035()">Criar acesso</button>`);
+  };
+  window.naFillEmailV035=function(){
+    const sel=document.getElementById("naStudent"),mail=document.getElementById("naEmail");
+    const e=sel.options[sel.selectedIndex]?.dataset.email||"";
+    if(e)mail.value=e;
+  };
+  window.saveNewStudentAccountV035=async function(){
+    if(!(await guard("manage_students")))return;
+    const studentId=document.getElementById("naStudent").value;
+    const email=document.getElementById("naEmail").value.trim();
+    const pass=document.getElementById("naPass").value;
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast("Digite um e-mail válido.");return}
+    {const prob=TonicaoAuth.passwordProblem?TonicaoAuth.passwordProblem(pass):"";if(prob){toast(prob);return}}
+    const s=await DB.getOne("students",studentId);
+    try{
+      await TonicaoRemoteAuth.createRemoteUser({name:s?.name||email,username:email,password:pass,role:"aluno",studentId});
+      if(s&&!s.email){s.email=email;await DB.put("students",s)}
+      await remoteUsers(true);
+      let link="";try{link=await getPublicAppUrl()}catch(e){}
+      const msg=`Oi ${String(s?.name||"").split(" ")[0]}! 🥋 Seu acesso ao app da Tonicão Team está pronto.\n\n${link}\n\nE-mail: ${email}\nSenha: ${pass}\n\nEntre e troque a senha se quiser, em "Esqueci a senha". Oss! 👊`;
+      showModal(`<h3>✅ Acesso criado</h3>
+        <div class="notice" style="white-space:pre-wrap">E-mail: ${esc(email)}\nSenha: ${esc(pass)}</div>
+        <p class="small muted">Guarde agora: esta é a única vez que a senha aparece.</p>
+        ${s?.phone?`<button class="btn green full" onclick="window.open('https://wa.me/${esc(phoneForWhatsApp(s.phone))}?text=${encodeURIComponent(msg)}','_blank')">💬 Enviar pelo WhatsApp</button>`:""}
+        <button class="btn secondary full" style="margin-top:8px" onclick="closeModal();renderAll()">Fechar</button>`);
+    }catch(e){toast(e.message||"Não foi possível criar o acesso.")}
+  };
+  window.resetStudentPasswordV035=async function(userId){
+    if(!(await guard("manage_students")))return;
+    const u=(await remoteUsers()).find(x=>x.id===userId);if(!u)return;
+    showModal(`<h3>🔑 Senha de ${esc(u.name||u.email)}</h3>
+      <p class="small muted">Por segurança, nem o Professor nem o Dono conseguem ver a senha de alguém: o servidor guarda só um código embaralhado.</p>
+      <div class="notice small"><strong>Opção 1 — o aluno mesmo resolve</strong><div class="small">Na tela de entrada, ele toca em "Esqueci a senha" e recebe um link no e-mail.</div></div>
+      <button class="btn primary full" style="margin-top:10px" onclick="sendResetV035('${esc(userId)}')">📧 Enviar e-mail de redefinição agora</button>
+      <div class="notice small" style="margin-top:12px"><strong>Opção 2 — criar outro acesso</strong><div class="small">Se ele não usa mais esse e-mail, bloqueie esta conta e crie um acesso novo com a senha que você escolher.</div></div>
+      <button class="btn secondary full" style="margin-top:8px" onclick="closeModal();newStudentAccountV035('${esc(u.studentId||"")}')">➕ Criar acesso novo</button>`);
+  };
+  window.sendResetV035=async function(userId){
+    try{await TonicaoRemoteAuth.resetRemotePassword({userId});closeModal();toast("E-mail de redefinição enviado ao aluno.")}
+    catch(e){toast(e.message||"Falha ao enviar.")}
+  };
+
   async function accountsSection(){
     const users=await remoteUsers();
     const students=await getStudents();
@@ -61,6 +119,7 @@
     const pending=users.filter(u=>u.active===false&&u.role!=="admin");
     const alunos=users.filter(u=>u.active!==false&&u.role==="aluno");
     return `<div class="section-title"><h2>🔐 Contas de acesso</h2><button class="btn secondary" onclick="refreshStudentAccountsV034()">Atualizar</button></div>
+      <button class="btn primary full" style="margin-bottom:10px" onclick="newStudentAccountV035()">➕ Criar acesso com e-mail e senha</button>
       ${pending.length?`<div class="list">${pending.map(u=>`<div class="list-item" style="cursor:default"><div class="icon">⏳</div>
         <div class="meta" style="flex:1"><strong>${esc(u.name||"Sem nome")}</strong><span class="small muted">${esc(u.email||"")} • aguardando liberação</span></div>
         <button class="btn primary" onclick="linkStudentAccountV034('${esc(u.id)}')">Liberar</button></div>`).join("")}</div>`
@@ -68,7 +127,8 @@
       ${alunos.length?`<details style="margin-top:10px"><summary class="small muted">Alunos com acesso liberado (${alunos.length})</summary>
         <div class="list" style="margin-top:8px">${alunos.map(u=>`<div class="list-item" style="cursor:default"><div class="icon">✅</div>
           <div class="meta" style="flex:1"><strong>${esc(u.name||u.email)}</strong><span class="small muted">ficha: ${esc(nameOf(u.studentId))}</span></div>
-          <button class="mini-btn" onclick="linkStudentAccountV034('${esc(u.id)}')">Trocar ficha</button>
+          <button class="mini-btn" onclick="resetStudentPasswordV035('${esc(u.id)}')">🔑 Senha</button>
+          <button class="mini-btn" onclick="linkStudentAccountV034('${esc(u.id)}')">Ficha</button>
           <button class="mini-btn" onclick="blockStudentAccountV034('${esc(u.id)}')">Bloquear</button></div>`).join("")}</div></details>`:""}`;
   }
 
