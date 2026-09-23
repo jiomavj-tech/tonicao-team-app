@@ -363,7 +363,7 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.37</p>
+        <p id="topSubtitle">Piloto offline-first • v0.38</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -4319,12 +4319,12 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.37`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.38`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
-// v0.37: só redesenha a tela quando a pessoa não está no meio de alguma coisa.
+// v0.38: só redesenha a tela quando a pessoa não está no meio de alguma coisa.
 let syncRedrawPending=false;
 function userIsBusy(){
   if(document.getElementById("qrFull"))return true;                     // QR em tela cheia
@@ -5089,6 +5089,52 @@ window.addEventListener("load",()=>setTimeout(async()=>{
     }
     return r;
   };
+})();
+</script>
+<script>/* ===== pw-eye.js ===== */
+/* v0.38 — Olhinho 👁 para conferir a senha digitada.
+   Funciona em qualquer campo de senha do app (criar acesso, responsável, login,
+   primeira configuração), inclusive nos que aparecem depois, dentro de janelas. */
+(()=>{
+  "use strict";
+  const CSS=`
+  .pw-wrap{position:relative;display:block}
+  .pw-wrap>input{padding-right:46px!important;width:100%}
+  .pw-eye{position:absolute;top:50%;right:6px;transform:translateY(-50%);
+    border:0;background:transparent;font-size:18px;line-height:1;padding:8px;border-radius:10px;cursor:pointer}
+  .pw-eye:active{background:rgba(0,0,0,.08)}`;
+  const st=document.createElement("style");st.textContent=CSS;document.head.appendChild(st);
+
+  function equip(inp){
+    if(!inp||inp.dataset.pwEye)return;
+    if(inp.type!=="password")return;
+    inp.dataset.pwEye="1";
+    const wrap=document.createElement("div");wrap.className="pw-wrap";
+    inp.parentNode.insertBefore(wrap,inp);wrap.appendChild(inp);
+    const b=document.createElement("button");
+    b.type="button";b.className="pw-eye";b.textContent="👁";
+    b.setAttribute("aria-label","Mostrar a senha");b.title="Mostrar a senha";
+    b.addEventListener("click",ev=>{
+      ev.preventDefault();ev.stopPropagation();
+      const show=inp.type==="password";
+      inp.type=show?"text":"password";
+      b.textContent=show?"🙈":"👁";
+      b.title=show?"Esconder a senha":"Mostrar a senha";
+      try{inp.focus({preventScroll:true});const n=inp.value.length;inp.setSelectionRange(n,n)}catch(e){}
+    });
+    wrap.appendChild(b);
+  }
+  function scan(root){
+    try{(root||document).querySelectorAll?.('input[type="password"]').forEach(equip)}catch(e){}
+  }
+  new MutationObserver(muts=>{
+    for(const m of muts)for(const n of m.addedNodes){
+      if(n.nodeType!==1)continue;
+      if(n.matches?.('input[type="password"]'))equip(n);else scan(n);
+    }
+  }).observe(document.documentElement,{childList:true,subtree:true});
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>scan());
+  else scan();
 })();
 </script>
 <script src="./features-v032-family.js"></script>
