@@ -97,6 +97,21 @@
     showModal(`<h3>📖 O que eu treinei</h3><div class="list">${list.length?(await Promise.all(list.map(s=>lessonCard(s,techs)))).join(""):`<div class="notice">Quando o Professor anotar as aulas em que você treinou, elas aparecem aqui.</div>`}</div>`);
   };
 
+  // ================= v0.33: excluir convite enviado =================
+  window.cancelInviteV033=async function(id){
+    if(!(await guard("manage_students")))return;
+    const r=await DB.getOne("registrationRequests",id);if(!r)return;
+    if(!confirm(`Excluir o convite de ${r.name}?\n\nO link que ele recebeu deixa de funcionar.`))return;
+    const token=r.remoteId||r.inviteToken||r.id;
+    try{
+      if(window.TonicaoFirebase?.configured&&TonicaoRemoteAuth.deleteRegistrationInvite)await TonicaoRemoteAuth.deleteRegistrationInvite(token);
+    }catch(e){
+      if(!confirm("Não consegui apagar o convite no servidor ("+(e.message||"falha")+").\n\nApagar só neste aparelho?"))return;
+    }
+    await DB.removeOne("registrationRequests",id);
+    toast("Convite excluído.");await renderAll();
+  };
+
   // ================= 3) PRONTOS PARA AVALIAR =================
   async function readiness(){
     const students=(await getStudents()).filter(s=>s.active!==false);

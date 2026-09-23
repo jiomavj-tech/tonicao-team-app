@@ -212,8 +212,10 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
 
 .auth-gate{
   display:none;position:fixed;inset:0;z-index:1000;background:#0f1115;
-  align-items:center;justify-content:center;padding:20px
+  align-items:flex-start;justify-content:center;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:calc(20px + env(safe-area-inset-top,0px)) 20px calc(40px + env(safe-area-inset-bottom,0px))
 }
+.auth-card{margin:auto 0}
 .auth-gate.show{display:flex}
 .auth-card{
   width:min(460px,100%);background:#fff;border-radius:24px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.35)
@@ -358,7 +360,7 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.32</p>
+        <p id="topSubtitle">Piloto offline-first • v0.33</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -1279,6 +1281,10 @@ const TonicaoRemoteAuth=(()=>{
     const req={name:String(payload.name||"").slice(0,120),phone:String(payload.phone||"").slice(0,40),birth:String(payload.birth||"").slice(0,10),graduationTrack:payload.graduationTrack==="kids"?"kids":"adulto",guardianName:String(payload.guardianName||"").slice(0,120),guardianPhone:String(payload.guardianPhone||"").slice(0,40),note:String(payload.note||"").slice(0,300),privacyConsentAt:String(payload.privacyConsentAt||"").slice(0,40),guardianConsentAt:String(payload.guardianConsentAt||"").slice(0,40),status:"pending",source:"self",inviteToken:id,createdAt:new Date().toISOString()};
     try{await inv().doc(id).set({...req,...F.meta()});return {request:{...req,id}}}catch(e){throw friendly(e)}
   }
+  async function deleteRegistrationInvite(token){
+    need();
+    try{await inv().doc(token).delete();return {ok:true}}catch(e){throw friendly(e)}
+  }
   async function listRegistrationRequests(){
     need();
     try{const snap=await inv().where("status","in",["invited","awaiting_approval","pending"]).get();return {requests:snap.docs.map(docToReq)}}catch(e){throw friendly(e)}
@@ -1303,7 +1309,7 @@ const TonicaoRemoteAuth=(()=>{
   async function removePushSubscription(){return {ok:false}}
 
   return {login,firstSetup,googleSignIn,googleRedirectResult,sendPasswordReset,me,logout,listRemoteUsers,approveGoogleUser,createRemoteUser,updateRemoteUser,resetRemotePassword,remotePermissions,
-    createRegistrationInvite,getRegistrationInvite,completeRegistrationInvite,submitRegistrationRequest,listRegistrationRequests,decideRegistrationRequest,
+    createRegistrationInvite,getRegistrationInvite,completeRegistrationInvite,submitRegistrationRequest,listRegistrationRequests,decideRegistrationRequest,deleteRegistrationInvite,
     getAcademyAccess,setAcademyAccess,googleConfig,googleLogin,bootstrap,listRemoteNotifications,markRemoteNotificationsRead,pushConfig,savePushSubscription,removePushSubscription};
 })();
 window.TonicaoRemoteAuth=TonicaoRemoteAuth;
@@ -2589,7 +2595,7 @@ async function renderStudents(){
     </div>`).join("")}</div>`:""}
 
     ${invited.length?`<div class="section-title"><h2>Convites enviados</h2><span class="pill">${invited.length}</span></div>
-    <div class="list">${invited.map(r=>`<div class="list-item"><div class="icon">📲</div><div style="flex:1"><strong>${r.name}</strong><div class="small muted">${r.phone||""} • aguardando o aluno completar</div></div>${professor?`<button class="mini-btn" onclick="shareRegistrationInvite('${r.id}')">Reenviar</button>`:""}</div>`).join("")}</div>`:""}
+    <div class="list">${invited.map(r=>`<div class="list-item"><div class="icon">📲</div><div style="flex:1"><strong>${r.name}</strong><div class="small muted">${r.phone||""} • aguardando o aluno completar</div></div>${professor?`<button class="mini-btn" onclick="shareRegistrationInvite('${r.id}')">Reenviar</button><button class="mini-btn" title="Excluir convite" onclick="cancelInviteV033('${r.id}')">🗑️</button>`:""}</div>`).join("")}</div>`:""}
 
     <div class="section-title"><h2>Alunos ativos</h2><span class="pill">${students.length}</span></div>
     <div class="list">${students.map(s=>`<div class="list-item student-row" onclick="studentDetails('${s.id}')">${studentAvatar(s)}<div class="meta"><strong>${s.name}</strong><span class="small muted">${s.belt} • ${s.stripes} grau(s) • ${s.phone||"sem telefone"} • ${s.payment}</span></div><span>›</span></div>`).join("")}</div>`
@@ -4310,7 +4316,7 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.32`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.33`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
@@ -4805,6 +4811,21 @@ window.addEventListener("load",()=>setTimeout(async()=>{
     const cur=await getCurrentStudent();if(!cur)return;
     const techs=await DB.getAll("techniques"),list=await myLessons(cur.id);
     showModal(`<h3>📖 O que eu treinei</h3><div class="list">${list.length?(await Promise.all(list.map(s=>lessonCard(s,techs)))).join(""):`<div class="notice">Quando o Professor anotar as aulas em que você treinou, elas aparecem aqui.</div>`}</div>`);
+  };
+
+  // ================= v0.33: excluir convite enviado =================
+  window.cancelInviteV033=async function(id){
+    if(!(await guard("manage_students")))return;
+    const r=await DB.getOne("registrationRequests",id);if(!r)return;
+    if(!confirm(`Excluir o convite de ${r.name}?\n\nO link que ele recebeu deixa de funcionar.`))return;
+    const token=r.remoteId||r.inviteToken||r.id;
+    try{
+      if(window.TonicaoFirebase?.configured&&TonicaoRemoteAuth.deleteRegistrationInvite)await TonicaoRemoteAuth.deleteRegistrationInvite(token);
+    }catch(e){
+      if(!confirm("Não consegui apagar o convite no servidor ("+(e.message||"falha")+").\n\nApagar só neste aparelho?"))return;
+    }
+    await DB.removeOne("registrationRequests",id);
+    toast("Convite excluído.");await renderAll();
   };
 
   // ================= 3) PRONTOS PARA AVALIAR =================

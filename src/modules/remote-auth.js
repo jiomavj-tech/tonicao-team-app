@@ -186,6 +186,10 @@ const TonicaoRemoteAuth=(()=>{
     const req={name:String(payload.name||"").slice(0,120),phone:String(payload.phone||"").slice(0,40),birth:String(payload.birth||"").slice(0,10),graduationTrack:payload.graduationTrack==="kids"?"kids":"adulto",guardianName:String(payload.guardianName||"").slice(0,120),guardianPhone:String(payload.guardianPhone||"").slice(0,40),note:String(payload.note||"").slice(0,300),privacyConsentAt:String(payload.privacyConsentAt||"").slice(0,40),guardianConsentAt:String(payload.guardianConsentAt||"").slice(0,40),status:"pending",source:"self",inviteToken:id,createdAt:new Date().toISOString()};
     try{await inv().doc(id).set({...req,...F.meta()});return {request:{...req,id}}}catch(e){throw friendly(e)}
   }
+  async function deleteRegistrationInvite(token){
+    need();
+    try{await inv().doc(token).delete();return {ok:true}}catch(e){throw friendly(e)}
+  }
   async function listRegistrationRequests(){
     need();
     try{const snap=await inv().where("status","in",["invited","awaiting_approval","pending"]).get();return {requests:snap.docs.map(docToReq)}}catch(e){throw friendly(e)}
@@ -210,7 +214,7 @@ const TonicaoRemoteAuth=(()=>{
   async function removePushSubscription(){return {ok:false}}
 
   return {login,firstSetup,googleSignIn,googleRedirectResult,sendPasswordReset,me,logout,listRemoteUsers,approveGoogleUser,createRemoteUser,updateRemoteUser,resetRemotePassword,remotePermissions,
-    createRegistrationInvite,getRegistrationInvite,completeRegistrationInvite,submitRegistrationRequest,listRegistrationRequests,decideRegistrationRequest,
+    createRegistrationInvite,getRegistrationInvite,completeRegistrationInvite,submitRegistrationRequest,listRegistrationRequests,decideRegistrationRequest,deleteRegistrationInvite,
     getAcademyAccess,setAcademyAccess,googleConfig,googleLogin,bootstrap,listRemoteNotifications,markRemoteNotificationsRead,pushConfig,savePushSubscription,removePushSubscription};
 })();
 window.TonicaoRemoteAuth=TonicaoRemoteAuth;

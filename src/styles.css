@@ -203,8 +203,10 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
 
 .auth-gate{
   display:none;position:fixed;inset:0;z-index:1000;background:#0f1115;
-  align-items:center;justify-content:center;padding:20px
+  align-items:flex-start;justify-content:center;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:calc(20px + env(safe-area-inset-top,0px)) 20px calc(40px + env(safe-area-inset-bottom,0px))
 }
+.auth-card{margin:auto 0}
 .auth-gate.show{display:flex}
 .auth-card{
   width:min(460px,100%);background:#fff;border-radius:24px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.35)
