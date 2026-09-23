@@ -153,7 +153,7 @@ async function applySequenceBonuses(s){
 function toast(msg){const el=document.getElementById("toast");el.textContent=msg;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2300)}
 function studentAvatar(s){return s.photo?`<img src="${s.photo}" alt="">`:`<div class="avatar small-avatar">🥋</div>`}
 function stopQrCamera(){if(qrTimer){clearTimeout(qrTimer);qrTimer=null}if(qrStream){qrStream.getTracks().forEach(t=>t.stop());qrStream=null}}
-function closeModal(){stopQrCamera();document.getElementById("modal").classList.remove("show")}
+function closeModal(){stopQrCamera();document.getElementById("modal").classList.remove("show");try{window.dispatchEvent(new CustomEvent("tonicao:modal-closed"))}catch(e){}}
 function showModal(html){
   stopQrCamera();
   document.getElementById("modalContent").innerHTML=`<button class="modal-back-btn" onclick="closeModal()">← Voltar</button>${html}`;
@@ -2614,12 +2614,28 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.36`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.37`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
-window.addEventListener("tonicao:data-synced",async()=>{try{await renderAll()}catch(e){}});
+// v0.37: só redesenha a tela quando a pessoa não está no meio de alguma coisa.
+let syncRedrawPending=false;
+function userIsBusy(){
+  if(document.getElementById("qrFull"))return true;                     // QR em tela cheia
+  const m=document.getElementById("modal");
+  if(m&&(m.classList.contains("show")||m.style.display==="flex"))return true; // alguma janela aberta
+  const a=document.activeElement;
+  if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))return true;        // digitando
+  return false;
+}
+window.redrawIfIdle=async function(){
+  if(userIsBusy()){syncRedrawPending=true;return}
+  syncRedrawPending=false;try{await renderAll()}catch(e){}
+};
+window.addEventListener("tonicao:data-synced",()=>{redrawIfIdle()});
+document.addEventListener("focusout",()=>{setTimeout(()=>{if(syncRedrawPending)redrawIfIdle()},400)});
+window.addEventListener("tonicao:modal-closed",()=>{if(syncRedrawPending)redrawIfIdle()});
 window.addEventListener("load",()=>{const a=sessionStorage.getItem("tonicaoAfterLogout");if(a){sessionStorage.removeItem("tonicaoAfterLogout");setTimeout(()=>{toast(a==="switch"?"Entre com a outra conta.":"Você saiu.");document.getElementById("cloudEmail")?.focus()},900)}});
 window.addEventListener("tonicao:cloud-revoked",async()=>{toast("Sua conta foi desativada ou ainda aguarda liberação.");await logoutAuth({force:true})});
 window.addEventListener("tonicao:sync-rejected",e=>{const list=e.detail||[];const att=list.find(r=>r&&r.store==="attendance");if(att){toast(`Check-in não confirmado: ${att.reason||"recusado pelo servidor"}`);return}if(list.length)toast(`${list.length} alteração(ões) recusada(s) pelo servidor.`)});
