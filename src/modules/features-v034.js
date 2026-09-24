@@ -112,14 +112,13 @@
     catch(e){toast(e.message||"Falha ao enviar.")}
   };
 
-  async function accountsSection(){
+  async function accountsSection(destaque=false){
     const users=await remoteUsers();
     const students=await getStudents();
     const nameOf=id=>students.find(s=>s.id===id)?.name||"sem ficha";
     const pending=users.filter(u=>u.active===false&&u.role!=="admin");
     const alunos=users.filter(u=>u.active!==false&&u.role==="aluno");
-    return `<div class="section-title"><h2>🔐 Contas de acesso</h2><button class="btn secondary" onclick="refreshStudentAccountsV034()">Atualizar</button></div>
-      <button class="btn primary full" style="margin-bottom:10px" onclick="newStudentAccountV035()">➕ Criar acesso com e-mail e senha</button>
+    const corpo=`<button class="btn primary full" style="margin:10px 0" onclick="newStudentAccountV035()">➕ Criar acesso com e-mail e senha</button>
       ${pending.length?`<div class="list">${pending.map(u=>`<div class="list-item" style="cursor:default"><div class="icon">⏳</div>
         <div class="meta" style="flex:1"><strong>${esc(u.name||"Sem nome")}</strong><span class="small muted">${esc(u.email||"")} • aguardando liberação</span></div>
         <button class="btn primary" onclick="linkStudentAccountV034('${esc(u.id)}')">Liberar</button></div>`).join("")}</div>`
@@ -130,6 +129,8 @@
           <button class="mini-btn" onclick="resetStudentPasswordV035('${esc(u.id)}')">🔑 Senha</button>
           <button class="mini-btn" onclick="linkStudentAccountV034('${esc(u.id)}')">Ficha</button>
           <button class="mini-btn" onclick="blockStudentAccountV034('${esc(u.id)}')">Bloquear</button></div>`).join("")}</div></details>`:""}`;
+    if(destaque)return `<div class="section-title"><h2>🔐 Aguardando liberação de acesso</h2><span class="pill amber">${pending.length}</span></div>${corpo}`;
+    return `<details style="margin-top:14px"><summary style="cursor:pointer;font-weight:700">🔐 Contas de acesso dos alunos</summary>${corpo}</details>`;
   }
 
   window.addEventListener("tonicao:data-synced",()=>{cache.at=0}); // sincronizou: consulta de novo
@@ -142,8 +143,11 @@
       if(!u||u.role!=="professor"||!(await cloudOn()))return r;
       const host=document.getElementById("students");if(!host||host.querySelector("[data-v034]"))return r;
       const box=document.createElement("div");box.dataset.v034="1";
-      box.innerHTML=await accountsSection();
-      host.appendChild(box);
+      const users=await remoteUsers();
+      const temPendente=users.some(u=>u.active===false&&u.role!=="admin");
+      box.innerHTML=await accountsSection(temPendente);
+      /* Pendência fica em cima, onde a Professora vê. Sem pendência, desce para o fim. */
+      if(temPendente)host.insertBefore(box,host.firstChild);else host.appendChild(box);
     }catch(e){
       const host=document.getElementById("students");
       if(host&&!host.querySelector("[data-v034]")){

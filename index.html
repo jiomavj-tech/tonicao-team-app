@@ -363,7 +363,7 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.42</p>
+        <p id="topSubtitle">Piloto offline-first • v0.43</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -2591,7 +2591,7 @@ async function renderStudents(){
   const ready=allReq.filter(r=>["awaiting_approval","pending"].includes(r.status));
   const professor=me?.role==="professor";
   document.getElementById("students").innerHTML=`
-    <div class="section-title"><h2>Alunos</h2>${professor?`<div class="actions"><button class="btn secondary" onclick="shareSelfRegistrationLink()">🔗 Auto-cadastro</button><button class="btn primary" onclick="newStudentModal()">+ Cadastro rápido</button></div>`:`<span class="pill">Somente leitura</span>`}</div>
+    <div class="section-title"><h2>Alunos</h2>${professor?`<div class="actions"><button class="btn secondary" onclick="shareSelfRegistrationLink()">📩 Aluno preenche</button><button class="btn primary" onclick="newStudentModal()">✍️ Eu cadastro</button></div>`:`<span class="pill">Somente leitura</span>`}</div>
 
     ${ready.length?`<div class="section-title"><h2>✓ Aguardando confirmação</h2><span class="pill amber">${ready.length}</span></div>
     <div class="list">${ready.map(r=>`<div class="card request-card ready-approval">
@@ -2608,23 +2608,41 @@ async function renderStudents(){
 }
 function studentCard(s,compact=false){return `<div class="card"><div class="student-row">${studentAvatar(s)}<div class="meta"><strong>${s.name}</strong><span class="small muted">${s.belt} • ${s.stripes} grau(s)</span></div></div><div class="grid" style="margin-top:14px"><div><span class="small muted">Nascimento</span><strong>${fmtDate(s.birth)}</strong></div><div><span class="small muted">Telefone</span><strong>${s.phone||"-"}</strong></div><div><span class="small muted">Vencimento</span><strong>Dia ${s.dueDay||"-"}</strong></div></div>${compact?"":`<div class="actions"><button class="btn secondary" onclick="photoModal('${s.id}')">📷 Foto</button><button class="btn secondary" onclick="gradingAction('${s.id}')">🥋 Graduação</button><button class="btn secondary" onclick="editStudentTrackModal('${s.id}')">🎯 Trilha/Faixa</button><button class="btn secondary" onclick="quickInvite('${s.id}')">🔗 Convite</button></div>`}</div>`}
 function newStudentModal(){
-  showModal(`<h3>Cadastro rápido de aluno</h3>
-    <p class="small muted">O Professor informa somente nome e telefone. O próprio aluno completa o restante pelo link recebido.</p>
+  showModal(`<h3>✍️ Cadastrar aluno</h3>
+    <p class="small muted">Com telefone, o aluno recebe o link e completa o cadastro sozinho. Sem telefone, a ficha é criada do mesmo jeito e você cuida de tudo por aqui.</p>
     <div class="contact-import-box">
       <button class="btn secondary full" onclick="importStudentFromContacts()">📇 Escolher dos contatos do celular</button>
       <p class="small muted" id="contactImportHint">Escolha o contato e depois toque em “Cadastrar e enviar link”.</p>
     </div>
     <div class="field"><label>Nome</label><input id="nsName" placeholder="Nome do aluno"></div>
-    <div class="field"><label>Telefone / WhatsApp</label><input id="nsPhone" inputmode="tel" placeholder="(48) 99999-9999"></div>
-    <button class="btn primary full" onclick="saveQuickStudentInvite()">Cadastrar e enviar link</button>
+    <div class="field"><label>Telefone / WhatsApp <span class="small muted">(opcional)</span></label><input id="nsPhone" inputmode="tel" placeholder="(48) 99999-9999" oninput="updateQuickSaveLabel()"></div>
+    <div class="field"><label>Trilha</label><select id="nsTrack"><option value="adulto">Adulto</option><option value="kids">Kids</option></select></div>
+    <p class="small muted" id="nsNoPhoneHint">Sem telefone: a ficha é criada e o Professor marca presença pelo check-in manual. O aluno não usa o app.</p>
+    <button class="btn primary full" id="nsSaveBtn" onclick="saveQuickStudentInvite()">Cadastrar ficha</button>
     <button class="btn secondary full" style="margin-top:10px" onclick="fullStudentModal()">Preencher cadastro completo manualmente</button>`)
+}
+function updateQuickSaveLabel(){
+  const tem=!!document.getElementById("nsPhone")?.value.trim();
+  const b=document.getElementById("nsSaveBtn"),h=document.getElementById("nsNoPhoneHint");
+  if(b)b.textContent=tem?"Cadastrar e enviar link":"Cadastrar ficha";
+  if(h)h.style.display=tem?"none":"";
 }
 async function saveQuickStudentInvite(){
   await TonicaoAuth.requirePerm("manage_students");
   const me=await TonicaoAuth.currentUser();
   if(me?.role!=="professor"){toast("O cadastro de aluno é responsabilidade do Professor.");return}
   const name=document.getElementById("nsName").value.trim(),phone=document.getElementById("nsPhone").value.trim();
-  if(!name||!phone){toast("Informe nome e telefone.");return}
+  if(!name){toast("Informe o nome do aluno.");return}
+  const track=document.getElementById("nsTrack")?.value||"adulto";
+  if(!phone){                                   // Kids sem contato, ou quem não usa celular
+    const belt=track==="kids"?"Cinza":"Branca";
+    const student={id:uid("s"),name,nickname:name.split(" ")[0],phone:"",birth:"",graduationTrack:track,belt,stripes:0,
+      classesInBelt:0,points:0,payment:"liberado",dueDay:10,active:true,createdAt:new Date().toISOString()};
+    await DB.put("students",student);
+    await TonicaoAuth.audit("student.create","Aluno cadastrado sem contato",student.id,{graduationTrack:track});
+    closeModal();toast(`${name.split(" ")[0]} cadastrado. Marque a presença pelo check-in manual.`);
+    await renderAll();return;
+  }
   const normalized=phoneForWhatsApp(phone);
   const existingStudents=(await getStudents()).find(s=>phoneForWhatsApp(s.phone)===normalized);
   if(existingStudents){toast("Já existe um aluno cadastrado com este telefone.");return}
@@ -2632,7 +2650,7 @@ async function saveQuickStudentInvite(){
   if(existingReq){closeModal();toast("Já existe um cadastro em andamento para este telefone.");setTimeout(()=>shareRegistrationInvite(existingReq.id),120);return}
 
   const settings=await getSettings();
-  let req={id:uid("reg"),academyId:settings.academyId||"tonicao-sul-ilha",name,phone,status:"invited",source:"professor_invite",inviteToken:localInviteToken(),createdAt:new Date().toISOString(),invitedBy:me.id};
+  let req={id:uid("reg"),academyId:settings.academyId||"tonicao-sul-ilha",name,phone,graduationTrack:track,status:"invited",source:"professor_invite",inviteToken:localInviteToken(),createdAt:new Date().toISOString(),invitedBy:me.id};
   try{
     if(settings.cloudEndpoint&&settings.cloudSessionToken&&navigator.onLine){
       const remote=await TonicaoRemoteAuth.createRegistrationInvite({name,phone});
@@ -2701,7 +2719,7 @@ async function saveNewStudent(){
   const graduationTrack=document.getElementById("nsTrack").value||"adulto",belt=document.getElementById("nsBelt").value;
   const student={id:uid("s"),name,nickname:name.split(" ")[0],phone:document.getElementById("nsPhone").value.trim(),birth:document.getElementById("nsBirth").value,graduationTrack,belt,stripes:+document.getElementById("nsStripes").value||0,classesInBelt:0,targetClasses:targetClassesFor(graduationTrack,belt),streak:0,points:0,dueDay:+document.getElementById("nsDue").value||10,payment:"verificar",active:true,photo:""};
   await DB.put("students",student);
-  closeModal();await TonicaoAuth.audit("student.create","Aluno cadastrado",student.id,{graduationTrack,phone:student.phone});toast("Aluno cadastrado.");await renderAll();setTimeout(()=>quickInvite(student.id),120)
+  closeModal();await TonicaoAuth.audit("student.create","Aluno cadastrado",student.id,{graduationTrack,phone:student.phone});toast("Aluno cadastrado.");await renderAll();if(student.phone)setTimeout(()=>quickInvite(student.id),120)
 }
 async function studentDetails(id){const s=await DB.getOne("students",id);showModal(`<h3>${s.name}</h3>${studentCard(s)}<div class="section-title"><h2>Situação</h2></div><div class="pill ${s.payment==="liberado"?"green":s.payment==="pendente"?"red":"amber"}">Pagamento: ${s.payment}</div><div class="actions"><button class="btn green" onclick="setPayment('${s.id}','liberado');closeModal()">Liberar</button><button class="btn secondary" onclick="setPayment('${s.id}','pendente');closeModal()">Pendente</button></div><button class="btn secondary full" style="margin-top:14px" onclick="closeModal()">Fechar</button>`)}
 async function setPayment(id,status){
@@ -2951,7 +2969,7 @@ async function savePlanEditor(planId=""){
   closeModal();toast("Plano de graduação salvo.");renderGraduation()
 }
 
-// v0.42: quantidade separada do nome, com − e +.
+// v0.43: quantidade separada do nome, com − e +.
 function splitReq(text){
   const m=String(text||"").trim().match(/^(\d+)\s+(.*)$/);
   if(!m)return {qty:1,name:String(text||"").trim()};
@@ -4216,7 +4234,7 @@ async function updateAccountButton(){
   btn.style.display=me?"inline-flex":"none";btn.style.alignItems="center";btn.style.justifyContent="center";
   if(me)btn.title=`${me.name||"Minha conta"} — trocar de conta`;
 }
-/* v0.42: o link de primeira configuração sai da tela de entrada.
+/* v0.43: o link de primeira configuração sai da tela de entrada.
    A academia já tem Dono: ele entra com e-mail e senha e o app reconhece que é o Administrador.
    Para montar outra unidade, abrir o app com ?setup=1 no fim do endereço. */
 function showFirstSetupLink(){
@@ -4369,12 +4387,12 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.42`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.43`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
-// v0.42: só redesenha a tela quando a pessoa não está no meio de alguma coisa.
+// v0.43: só redesenha a tela quando a pessoa não está no meio de alguma coisa.
 let syncRedrawPending=false;
 function userIsBusy(){
   if(document.getElementById("qrFull"))return true;                     // QR em tela cheia
@@ -5097,14 +5115,13 @@ window.addEventListener("load",()=>setTimeout(async()=>{
     catch(e){toast(e.message||"Falha ao enviar.")}
   };
 
-  async function accountsSection(){
+  async function accountsSection(destaque=false){
     const users=await remoteUsers();
     const students=await getStudents();
     const nameOf=id=>students.find(s=>s.id===id)?.name||"sem ficha";
     const pending=users.filter(u=>u.active===false&&u.role!=="admin");
     const alunos=users.filter(u=>u.active!==false&&u.role==="aluno");
-    return `<div class="section-title"><h2>🔐 Contas de acesso</h2><button class="btn secondary" onclick="refreshStudentAccountsV034()">Atualizar</button></div>
-      <button class="btn primary full" style="margin-bottom:10px" onclick="newStudentAccountV035()">➕ Criar acesso com e-mail e senha</button>
+    const corpo=`<button class="btn primary full" style="margin:10px 0" onclick="newStudentAccountV035()">➕ Criar acesso com e-mail e senha</button>
       ${pending.length?`<div class="list">${pending.map(u=>`<div class="list-item" style="cursor:default"><div class="icon">⏳</div>
         <div class="meta" style="flex:1"><strong>${esc(u.name||"Sem nome")}</strong><span class="small muted">${esc(u.email||"")} • aguardando liberação</span></div>
         <button class="btn primary" onclick="linkStudentAccountV034('${esc(u.id)}')">Liberar</button></div>`).join("")}</div>`
@@ -5115,6 +5132,8 @@ window.addEventListener("load",()=>setTimeout(async()=>{
           <button class="mini-btn" onclick="resetStudentPasswordV035('${esc(u.id)}')">🔑 Senha</button>
           <button class="mini-btn" onclick="linkStudentAccountV034('${esc(u.id)}')">Ficha</button>
           <button class="mini-btn" onclick="blockStudentAccountV034('${esc(u.id)}')">Bloquear</button></div>`).join("")}</div></details>`:""}`;
+    if(destaque)return `<div class="section-title"><h2>🔐 Aguardando liberação de acesso</h2><span class="pill amber">${pending.length}</span></div>${corpo}`;
+    return `<details style="margin-top:14px"><summary style="cursor:pointer;font-weight:700">🔐 Contas de acesso dos alunos</summary>${corpo}</details>`;
   }
 
   window.addEventListener("tonicao:data-synced",()=>{cache.at=0}); // sincronizou: consulta de novo
@@ -5127,8 +5146,11 @@ window.addEventListener("load",()=>setTimeout(async()=>{
       if(!u||u.role!=="professor"||!(await cloudOn()))return r;
       const host=document.getElementById("students");if(!host||host.querySelector("[data-v034]"))return r;
       const box=document.createElement("div");box.dataset.v034="1";
-      box.innerHTML=await accountsSection();
-      host.appendChild(box);
+      const users=await remoteUsers();
+      const temPendente=users.some(u=>u.active===false&&u.role!=="admin");
+      box.innerHTML=await accountsSection(temPendente);
+      /* Pendência fica em cima, onde a Professora vê. Sem pendência, desce para o fim. */
+      if(temPendente)host.insertBefore(box,host.firstChild);else host.appendChild(box);
     }catch(e){
       const host=document.getElementById("students");
       if(host&&!host.querySelector("[data-v034]")){
