@@ -40,6 +40,9 @@ const TonicaoRemoteAuth=(()=>{
     s.cloudEnabled=true;s.cloudEndpoint="firebase";s.cloudSessionToken="firebase";s.remoteUser=user;
     s.academyId=F.academyId();
     await DB.put("settings",s);
+    /* v0.42: quem conseguiu entrar prova que a academia já existe e tem Dono.
+       A partir daí o link de primeira configuração some da tela de entrada deste aparelho. */
+    try{window.markAcademyReady&&window.markAcademyReady()}catch(e){}
   }
   function mapMember(uid,m){return {id:uid,name:m.name||m.email||"Usuário",email:m.email||"",username:m.email||uid,role:m.role||"aluno",studentId:m.studentId||"",active:m.active===true,provider:m.provider||"password",picture:m.picture||""}}
   async function memberOf(uid){const d=await F.acad().collection("members").doc(uid).get();return d.exists?mapMember(uid,d.data()):null}

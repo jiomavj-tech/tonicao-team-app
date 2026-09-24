@@ -12,7 +12,7 @@
   const LOGIN = {
     title: "Entrar no aplicativo",
     steps: [
-      ["Primeiro acesso: toque em \"Primeira configuração da academia (Dono)\", lá embaixo, e crie a conta com nome, e-mail e senha.",
+      ["Primeiro acesso do Dono: o link \"Primeira configuração da academia\" aparece só enquanto a academia não tem Dono. Depois disso, entre com e-mail e senha: o app já sabe que você é o Administrador.",
        "O Dono é quem cria as contas dos professores e controla o acesso da academia. Só existe um."],
       ["A senha precisa ter 9 caracteres ou mais, com letra MAIÚSCULA, letra minúscula, número e símbolo (. ! @ #), em qualquer ordem.",
        "Senha longa e variada é muito mais difícil de adivinhar. Evite nome e data de nascimento."],

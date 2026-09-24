@@ -1243,7 +1243,7 @@ async function savePlanEditor(planId=""){
   closeModal();toast("Plano de graduação salvo.");renderGraduation()
 }
 
-// v0.41: quantidade separada do nome, com − e +.
+// v0.42: quantidade separada do nome, com − e +.
 function splitReq(text){
   const m=String(text||"").trim().match(/^(\d+)\s+(.*)$/);
   if(!m)return {qty:1,name:String(text||"").trim()};
@@ -2508,6 +2508,17 @@ async function updateAccountButton(){
   btn.style.display=me?"inline-flex":"none";btn.style.alignItems="center";btn.style.justifyContent="center";
   if(me)btn.title=`${me.name||"Minha conta"} — trocar de conta`;
 }
+/* v0.42: o link de primeira configuração sai da tela de entrada.
+   A academia já tem Dono: ele entra com e-mail e senha e o app reconhece que é o Administrador.
+   Para montar outra unidade, abrir o app com ?setup=1 no fim do endereço. */
+function showFirstSetupLink(){
+  try{
+    if(new URLSearchParams(location.search).get("setup")==="1")return true;      // caminho para montar nova unidade
+    return !window.TonicaoFirebase?.configured;                                  // sem servidor configurado: precisa aparecer
+  }catch(e){return false}
+}
+window.markAcademyReady=function(){try{localStorage.setItem("tonicao_academy_ready","1")}catch(e){}};
+
 async function renderCloudAuthGate(gate,host){
   const current=await TonicaoAuth.currentUser(),settings=await getSettings();
   if(current&&settings.cloudSessionToken){gate.classList.remove("show");document.body.classList.remove("auth-locked");return true}
@@ -2522,7 +2533,7 @@ async function renderCloudAuthGate(gate,host){
     <div class="auth-divider"><span>ou</span></div>
     <div id="googleLoginArea" class="google-login-area"></div>
     <button class="btn secondary full" style="margin-top:12px" onclick="studentSelfRegistrationModal()">Quero me cadastrar como aluno</button>
-    <p class="small muted" style="margin-top:18px;text-align:center"><a href="#" onclick="cloudFirstSetupModal();return false">Primeira configuração da academia (Dono)</a></p>`;
+    ${showFirstSetupLink()?`<p class="small muted" style="margin-top:18px;text-align:center"><a href="#" onclick="cloudFirstSetupModal();return false">Primeira configuração da academia (Dono)</a></p>`:""}`;
   setTimeout(()=>TonicaoGoogle.renderButton("googleLoginArea"),30);
   return false;
 }
@@ -2650,12 +2661,12 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.41`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.42`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
-// v0.41: só redesenha a tela quando a pessoa não está no meio de alguma coisa.
+// v0.42: só redesenha a tela quando a pessoa não está no meio de alguma coisa.
 let syncRedrawPending=false;
 function userIsBusy(){
   if(document.getElementById("qrFull"))return true;                     // QR em tela cheia
