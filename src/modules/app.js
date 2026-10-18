@@ -1261,7 +1261,7 @@ async function savePlanEditor(planId=""){
   closeModal();toast("Plano de graduação salvo.");renderGraduation()
 }
 
-// v0.43: quantidade separada do nome, com − e +.
+// v0.44: quantidade separada do nome, com − e +.
 function splitReq(text){
   const m=String(text||"").trim().match(/^(\d+)\s+(.*)$/);
   if(!m)return {qty:1,name:String(text||"").trim()};
@@ -1666,19 +1666,21 @@ if(mode==="users"){
   const students=await getStudents();
   document.getElementById("more").innerHTML=`
     <div class="section-title"><h2>Usuários e permissões</h2><button class="btn secondary" onclick="renderMore()">Voltar</button></div>
-    <button class="btn primary full" onclick="newUserModal()">+ Novo usuário</button>
+    <div class="section-title"><h2>Contas do app</h2><div class="actions"><button class="btn primary" onclick="newRemoteUserModal()">+ Nova conta</button><button class="btn secondary" onclick="renderRemoteGoogleUsers()">Atualizar</button></div></div>
+    <p class="small muted">São estas as contas com que Professor e alunos entram no app.</p>
+    <div id="remoteGoogleUsersBox"><div class="card"><p class="small muted">Carregando contas da academia…</p></div></div>
+    <div class="notice"><strong>Perfis</strong><div class="small"><b>Aluno:</b> somente sua área. <b>Professor:</b> autoridade acadêmica e operacional — cadastro/aprovação, check-in, presença, graduação, pontos e conteúdo. <b>Administrador/Dono:</b> manutenção, usuários, identidade e acesso da academia; visualiza o acadêmico, mas não altera decisões do Professor.</div></div>
+    ${users.length?`<details style="margin-top:16px"><summary style="cursor:pointer;font-weight:700">Acessos antigos, só deste celular (${users.length})</summary>
+    <div class="notice payment small" style="margin-top:8px"><strong>Atenção</strong><div class="small">Estes acessos valem apenas neste aparelho e não servem para entrar no app. Trocar a senha aqui NÃO muda a senha de ninguém.</div></div>
     <div class="list" style="margin-top:12px">${users.map(u=>`
       <div class="list-item">
         <div class="icon">${u.role==="admin"?"🛡️":u.role==="professor"?"🥋":"👤"}</div>
         <div style="flex:1"><strong>${u.name}</strong><div class="small muted">@${u.username} • ${TonicaoAuth.ROLE_LABEL[u.role]||u.role}${u.studentId?` • aluno vinculado`:""}</div>
         <div class="actions">
-          <button class="btn secondary" onclick="changeUserPasswordModal('${u.id}')">Trocar senha</button>
+          <button class="btn secondary" onclick="changeUserPasswordModal('${u.id}')">Trocar senha local</button>
           <button class="btn ${u.active!==false?"danger":"green"}" onclick="toggleUserActive('${u.id}',${u.active===false})">${u.active!==false?"Desativar":"Ativar"}</button>
         </div></div>
-      </div>`).join("")}</div>
-    <div class="section-title"><h2>Usuários do servidor</h2><div class="actions"><button class="btn primary" onclick="newRemoteUserModal()">+ Remoto</button><button class="btn secondary" onclick="renderRemoteGoogleUsers()">Atualizar</button></div></div>
-    <div id="remoteGoogleUsersBox"><div class="card"><p class="small muted">Carregando contas da academia…</p></div></div>
-    <div class="notice"><strong>Perfis</strong><div class="small"><b>Aluno:</b> somente sua área. <b>Professor:</b> autoridade acadêmica e operacional — cadastro/aprovação, check-in, presença, graduação, pontos e conteúdo. <b>Administrador/Dono:</b> manutenção, usuários, identidade e acesso da academia; visualiza o acadêmico, mas não altera decisões do Professor.</div></div>`;
+      </div>`).join("")}</div></details>`:""}`;
   setTimeout(()=>renderRemoteGoogleUsers(),50);
   return
 }
@@ -2161,7 +2163,8 @@ async function saveNewUser(){
 }
 async function changeUserPasswordModal(id){
   const u=await DB.getOne("users",id);
-  showModal(`<h3>Trocar senha</h3><p><strong>${u?.name||""}</strong></p>
+  showModal(`<h3>Trocar senha local</h3><p><strong>${u?.name||""}</strong></p>
+    <div class="notice payment small"><strong>Isto não muda a senha do app</strong><div class="small">Vale só para o acesso antigo deste aparelho. Para a conta com que a pessoa entra no app, use <b>Contas do app</b> na tela anterior.</div></div>
     <div class="field"><label>Nova senha/PIN</label><input id="newUserPass" type="password"></div>
     <button class="btn primary full" onclick="saveUserPassword('${id}')">Salvar nova senha</button>`);
 }
@@ -2526,7 +2529,7 @@ async function updateAccountButton(){
   btn.style.display=me?"inline-flex":"none";btn.style.alignItems="center";btn.style.justifyContent="center";
   if(me)btn.title=`${me.name||"Minha conta"} — trocar de conta`;
 }
-/* v0.43: o link de primeira configuração sai da tela de entrada.
+/* v0.44: o link de primeira configuração sai da tela de entrada.
    A academia já tem Dono: ele entra com e-mail e senha e o app reconhece que é o Administrador.
    Para montar outra unidade, abrir o app com ?setup=1 no fim do endereço. */
 function showFirstSetupLink(){
@@ -2679,12 +2682,12 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.43`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore();updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.44`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
-// v0.43: só redesenha a tela quando a pessoa não está no meio de alguma coisa.
+// v0.44: só redesenha a tela quando a pessoa não está no meio de alguma coisa.
 let syncRedrawPending=false;
 function userIsBusy(){
   if(document.getElementById("qrFull"))return true;                     // QR em tela cheia
