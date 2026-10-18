@@ -173,7 +173,13 @@ async function applyRemoteChange(change){
   const local=await getOne(change.store,change.recordId);
   const remoteUpdated=change.updatedAt || change.value?.updatedAt || "";
   const localUpdated=local?.updatedAt || "";
-  if(local && localUpdated && remoteUpdated && localUpdated > remoteUpdated) return false;
+  /* v0.46: nada a fazer quando o servidor não traz nada mais novo que o local.
+     Antes, com a data IGUAL — o caso de um registro que este próprio celular
+     acabou de enviar e volta na releitura — o app regravava por cima e contava
+     como "chegou novidade", o que redesenhava o aplicativo inteiro a cada
+     sincronização. */
+  if(local && localUpdated && remoteUpdated && localUpdated >= remoteUpdated) return false;
+  if(change.op==="delete" && !local) return false;   // apagar o que já não existe não é novidade
 
   window.__TONICAO_REMOTE_APPLY__=true;
   try{
