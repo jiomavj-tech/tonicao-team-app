@@ -241,7 +241,12 @@ const TonicaoCloud=(()=>{
       await DB.rawPut("syncLog",{id:"cloud-"+Date.now(),direction:"cloud",at:new Date().toISOString(),pushed,applied});
       if(rejected.length){try{window.dispatchEvent(new CustomEvent("tonicao:sync-rejected",{detail:rejected}))}catch(e){}}
       const out={...await getStatus(),pushed,applied,rejected:rejected.length};
-      if(pushed||applied||rejected.length){try{window.dispatchEvent(new CustomEvent("tonicao:data-synced",{detail:out}))}catch(e){}}
+      /* v0.45: redesenhar a tela só faz sentido quando chegou coisa NOVA do servidor
+         (applied) ou alguma alteração foi recusada. Enviar o que a pessoa acabou de
+         fazer (pushed) não muda nada na tela — e era isso que redesenhava o app
+         inteiro a cada ação, jogando a pessoa de volta para o topo. */
+      if(applied||rejected.length){try{window.dispatchEvent(new CustomEvent("tonicao:data-synced",{detail:out}))}catch(e){}}
+      else if(pushed){try{window.dispatchEvent(new CustomEvent("tonicao:data-pushed",{detail:out}))}catch(e){}}
       return out;
     }catch(err){
       const msg=err?.code==="permission-denied"?"Sem permissão no servidor.":(err?.message||String(err));

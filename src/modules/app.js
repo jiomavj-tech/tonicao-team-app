@@ -1261,7 +1261,7 @@ async function savePlanEditor(planId=""){
   closeModal();toast("Plano de graduação salvo.");renderGraduation()
 }
 
-// v0.44: quantidade separada do nome, com − e +.
+// v0.45: quantidade separada do nome, com − e +.
 function splitReq(text){
   const m=String(text||"").trim().match(/^(\d+)\s+(.*)$/);
   if(!m)return {qty:1,name:String(text||"").trim()};
@@ -2529,7 +2529,7 @@ async function updateAccountButton(){
   btn.style.display=me?"inline-flex":"none";btn.style.alignItems="center";btn.style.justifyContent="center";
   if(me)btn.title=`${me.name||"Minha conta"} — trocar de conta`;
 }
-/* v0.44: o link de primeira configuração sai da tela de entrada.
+/* v0.45: o link de primeira configuração sai da tela de entrada.
    A academia já tem Dono: ele entra com e-mail e senha e o app reconhece que é o Administrador.
    Para montar outra unidade, abrir o app com ?setup=1 no fim do endereço. */
 function showFirstSetupLink(){
@@ -2682,26 +2682,53 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.44`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.45`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
-// v0.44: só redesenha a tela quando a pessoa não está no meio de alguma coisa.
-let syncRedrawPending=false;
+// v0.45: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
+let syncRedrawPending=false,syncRedrawTimer=null,lastTouchAt=0;
+for(const ev of ["pointerdown","touchstart","keydown","scroll","wheel"])
+  window.addEventListener(ev,()=>{lastTouchAt=Date.now()},{passive:true,capture:true});
 function userIsBusy(){
   if(document.getElementById("qrFull"))return true;                     // QR em tela cheia
   const m=document.getElementById("modal");
   if(m&&(m.classList.contains("show")||m.style.display==="flex"))return true; // alguma janela aberta
   const a=document.activeElement;
   if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))return true;        // digitando
+  if(Date.now()-lastTouchAt<3000)return true;                           // mexeu agora há pouco
   return false;
 }
+/* Guarda o que a pessoa tinha aberto e até onde tinha rolado, para repor depois. */
+function captureViewState(){
+  const abertos=[...document.querySelectorAll("details")].map(d=>d.open);
+  return {y:window.scrollY||0,abertos};
+}
+function restoreViewState(st){
+  if(!st)return;
+  const ds=document.querySelectorAll("details");
+  st.abertos.forEach((aberto,i)=>{if(aberto&&ds[i])ds[i].open=true});
+  if(st.y>0)window.scrollTo(0,st.y);
+}
 window.redrawIfIdle=async function(){
-  if(userIsBusy()){syncRedrawPending=true;return}
-  syncRedrawPending=false;try{await renderAll()}catch(e){}
+  if(userIsBusy()){
+    syncRedrawPending=true;
+    clearTimeout(syncRedrawTimer);
+    syncRedrawTimer=setTimeout(()=>{if(syncRedrawPending)redrawIfIdle()},3200);
+    return;
+  }
+  syncRedrawPending=false;clearTimeout(syncRedrawTimer);
+  const st=captureViewState();
+  try{await renderAll()}catch(e){}
+  restoreViewState(st);
 };
 window.addEventListener("tonicao:data-synced",()=>{redrawIfIdle()});
+/* Enviou o que a pessoa fez: nada mudou na tela, só o indicador da
+   tela de Sincronização, e só se ela estiver aberta. */
+window.addEventListener("tonicao:data-pushed",()=>{
+  if(currentMainPage==="more"&&currentMoreMode==="cloud"&&!userIsBusy())renderMore("cloud").catch(()=>{});
+});
 document.addEventListener("focusout",()=>{setTimeout(()=>{if(syncRedrawPending)redrawIfIdle()},400)});
 window.addEventListener("tonicao:modal-closed",()=>{if(syncRedrawPending)redrawIfIdle()});
 window.addEventListener("load",()=>{const a=sessionStorage.getItem("tonicaoAfterLogout");if(a){sessionStorage.removeItem("tonicaoAfterLogout");setTimeout(()=>{toast(a==="switch"?"Entre com a outra conta.":"Você saiu.");document.getElementById("cloudEmail")?.focus()},900)}});
