@@ -375,7 +375,7 @@ body.auth-locked,body.install-locked{overflow:hidden}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.52</p>
+        <p id="topSubtitle">Piloto offline-first • v0.53</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -2992,7 +2992,7 @@ async function savePlanEditor(planId=""){
   closeModal();toast("Plano de graduação salvo.");renderGraduation()
 }
 
-// v0.52: quantidade separada do nome, com − e +.
+// v0.53: quantidade separada do nome, com − e +.
 function splitReq(text){
   const m=String(text||"").trim().match(/^(\d+)\s+(.*)$/);
   if(!m)return {qty:1,name:String(text||"").trim()};
@@ -4222,7 +4222,7 @@ async function renderAuthGate(){
 
   const gate=document.getElementById("authGate"),host=document.getElementById("authGateContent");
   if(window.TonicaoFirebase?.configured)return await renderCloudAuthGate(gate,host);
-  /* v0.52: esta instalação usa servidor (window.TONICAO_FIREBASE existe), mas o
+  /* v0.53: esta instalação usa servidor (window.TONICAO_FIREBASE existe), mas o
      programa do Firebase não carregou — em geral internet ruim no primeiro acesso.
      NUNCA cair na criação de Dono local aqui: isso criaria uma conta solta, presa
      a este aparelho e sem ligação com a academia. */
@@ -4277,7 +4277,7 @@ async function updateAccountButton(){
   btn.style.display=me?"inline-flex":"none";btn.style.alignItems="center";btn.style.justifyContent="center";
   if(me)btn.title=`${me.name||"Minha conta"} — trocar de conta`;
 }
-/* v0.52: o link de primeira configuração sai da tela de entrada.
+/* v0.53: o link de primeira configuração sai da tela de entrada.
    A academia já tem Dono: ele entra com e-mail e senha e o app reconhece que é o Administrador.
    Para montar outra unidade, abrir o app com ?setup=1 no fim do endereço. */
 function showFirstSetupLink(){
@@ -4430,12 +4430,12 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.52`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.53`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
-// v0.52: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
+// v0.53: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
 let syncRedrawPending=false,syncRedrawTimer=null,lastTouchAt=0;
 for(const ev of ["pointerdown","touchstart","keydown","scroll","wheel"])
   window.addEventListener(ev,()=>{lastTouchAt=Date.now()},{passive:true,capture:true});
@@ -5524,7 +5524,7 @@ window.addEventListener("load",()=>setTimeout(async()=>{
   };
 
   /* Entra no menu Mais, junto de Compartilhar. */
-  function porNoMais(){
+  function porNoMais(){                               // continua no Mais mesmo para quem dispensou
     const host=document.getElementById("more");if(!host)return;
     if(host.querySelector(".section-title h2")?.textContent?.trim()!=="Mais")return;
     const list=host.querySelector(".list");if(!list)return;
@@ -5548,6 +5548,16 @@ window.addEventListener("load",()=>setTimeout(async()=>{
      exata em todo navegador, e quem abre pelo navegador de dentro do WhatsApp não
      consegue instalar — sem a saída, essa pessoa ficaria trancada fora do app. */
   function pulouAgora(){try{return sessionStorage.getItem("tonicao_pular_instalar")==="1"}catch(e){return false}}
+  function nuncaMais(){try{return localStorage.getItem("tonicao_instalar_nunca")==="1"}catch(e){return false}}
+  function vezesVistas(){try{return Number(localStorage.getItem("tonicao_instalar_vezes")||0)}catch(e){return 0}}
+  function contarVez(){try{localStorage.setItem("tonicao_instalar_vezes",String(vezesVistas()+1))}catch(e){}}
+  window.naoMostrarInstalarV051=function(){
+    try{localStorage.setItem("tonicao_instalar_nunca","1")}catch(e){}
+    document.getElementById("instalarGate")?.remove();
+    document.body.classList.remove("install-locked");
+    document.querySelectorAll("[data-instalar]").forEach(x=>x.remove());
+    toast("Combinado. Se precisar, use Mais → Instalar o aplicativo.");
+  };
   window.pularInstalacaoV051=function(){
     try{sessionStorage.setItem("tonicao_pular_instalar","1")}catch(e){}
     document.getElementById("instalarGate")?.remove();
@@ -5563,11 +5573,13 @@ window.addEventListener("load",()=>setTimeout(async()=>{
   };
   async function portaoInstalar(){
     try{
-      if(jaInstalado()||pulouAgora())return;
+      if(jaInstalado()||pulouAgora()||nuncaMais())return;
       if(document.getElementById("instalarGate"))return;
       let me=null;try{me=await TonicaoAuth.currentUser()}catch(e){}
       if(!me)return;                                   // só depois de entrar
       const p=PASSOS[aparelho()],android=!!convite;
+      const repetindo=vezesVistas()>=1;                // já viu esta tela antes
+      contarVez();
       const g=document.createElement("div");
       g.id="instalarGate";g.className="auth-gate show";
       g.innerHTML=`<div class="auth-card">
@@ -5579,7 +5591,9 @@ window.addEventListener("load",()=>setTimeout(async()=>{
           <div class="icon">${i+1}</div><div class="meta"><strong>${x}</strong></div></div>`).join("")}</div>
         ${p.nota?`<div class="notice small" style="margin-top:10px">${p.nota}</div>`:""}`}
         <button class="btn ${android?"secondary":"primary"} full" style="margin-top:10px" onclick="conferirInstalacaoV051()">Já instalei</button>
-        <p class="small muted" style="margin-top:16px;text-align:center">
+        ${repetindo?`<button class="btn secondary full" style="margin-top:8px" onclick="naoMostrarInstalarV051()">Já instalei — não mostrar mais</button>
+          <p class="small muted" style="margin-top:10px;text-align:center">Use este se o aplicativo já estiver na tela do celular e esta mensagem continuar aparecendo.</p>`:""}
+        <p class="small muted" style="margin-top:${repetindo?"10":"16"}px;text-align:center">
           <a href="#" onclick="pularInstalacaoV051();return false">Não consigo instalar agora</a></p>
       </div>`;
       document.body.appendChild(g);
@@ -5595,7 +5609,7 @@ window.addEventListener("load",()=>setTimeout(async()=>{
   /* Aviso discreto no Início, uma vez só, para quem ainda não instalou. */
   function avisoNaHome(){
     try{
-      if(jaInstalado())return;
+      if(jaInstalado()||nuncaMais())return;
       if(localStorage.getItem("tonicao_instalar_dispensado")==="1")return;
       const home=document.getElementById("home");
       if(!home||home.querySelector("[data-instalar]"))return;

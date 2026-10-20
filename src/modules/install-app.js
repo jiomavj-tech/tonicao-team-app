@@ -83,7 +83,7 @@
   };
 
   /* Entra no menu Mais, junto de Compartilhar. */
-  function porNoMais(){
+  function porNoMais(){                               // continua no Mais mesmo para quem dispensou
     const host=document.getElementById("more");if(!host)return;
     if(host.querySelector(".section-title h2")?.textContent?.trim()!=="Mais")return;
     const list=host.querySelector(".list");if(!list)return;
@@ -107,6 +107,16 @@
      exata em todo navegador, e quem abre pelo navegador de dentro do WhatsApp não
      consegue instalar — sem a saída, essa pessoa ficaria trancada fora do app. */
   function pulouAgora(){try{return sessionStorage.getItem("tonicao_pular_instalar")==="1"}catch(e){return false}}
+  function nuncaMais(){try{return localStorage.getItem("tonicao_instalar_nunca")==="1"}catch(e){return false}}
+  function vezesVistas(){try{return Number(localStorage.getItem("tonicao_instalar_vezes")||0)}catch(e){return 0}}
+  function contarVez(){try{localStorage.setItem("tonicao_instalar_vezes",String(vezesVistas()+1))}catch(e){}}
+  window.naoMostrarInstalarV051=function(){
+    try{localStorage.setItem("tonicao_instalar_nunca","1")}catch(e){}
+    document.getElementById("instalarGate")?.remove();
+    document.body.classList.remove("install-locked");
+    document.querySelectorAll("[data-instalar]").forEach(x=>x.remove());
+    toast("Combinado. Se precisar, use Mais → Instalar o aplicativo.");
+  };
   window.pularInstalacaoV051=function(){
     try{sessionStorage.setItem("tonicao_pular_instalar","1")}catch(e){}
     document.getElementById("instalarGate")?.remove();
@@ -122,11 +132,13 @@
   };
   async function portaoInstalar(){
     try{
-      if(jaInstalado()||pulouAgora())return;
+      if(jaInstalado()||pulouAgora()||nuncaMais())return;
       if(document.getElementById("instalarGate"))return;
       let me=null;try{me=await TonicaoAuth.currentUser()}catch(e){}
       if(!me)return;                                   // só depois de entrar
       const p=PASSOS[aparelho()],android=!!convite;
+      const repetindo=vezesVistas()>=1;                // já viu esta tela antes
+      contarVez();
       const g=document.createElement("div");
       g.id="instalarGate";g.className="auth-gate show";
       g.innerHTML=`<div class="auth-card">
@@ -138,7 +150,9 @@
           <div class="icon">${i+1}</div><div class="meta"><strong>${x}</strong></div></div>`).join("")}</div>
         ${p.nota?`<div class="notice small" style="margin-top:10px">${p.nota}</div>`:""}`}
         <button class="btn ${android?"secondary":"primary"} full" style="margin-top:10px" onclick="conferirInstalacaoV051()">Já instalei</button>
-        <p class="small muted" style="margin-top:16px;text-align:center">
+        ${repetindo?`<button class="btn secondary full" style="margin-top:8px" onclick="naoMostrarInstalarV051()">Já instalei — não mostrar mais</button>
+          <p class="small muted" style="margin-top:10px;text-align:center">Use este se o aplicativo já estiver na tela do celular e esta mensagem continuar aparecendo.</p>`:""}
+        <p class="small muted" style="margin-top:${repetindo?"10":"16"}px;text-align:center">
           <a href="#" onclick="pularInstalacaoV051();return false">Não consigo instalar agora</a></p>
       </div>`;
       document.body.appendChild(g);
@@ -154,7 +168,7 @@
   /* Aviso discreto no Início, uma vez só, para quem ainda não instalou. */
   function avisoNaHome(){
     try{
-      if(jaInstalado())return;
+      if(jaInstalado()||nuncaMais())return;
       if(localStorage.getItem("tonicao_instalar_dispensado")==="1")return;
       const home=document.getElementById("home");
       if(!home||home.querySelector("[data-instalar]"))return;
