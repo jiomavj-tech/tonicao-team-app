@@ -213,7 +213,8 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
 }
 .auth-card{margin:0;flex:0 0 auto}
 .auth-gate.show{display:flex}
-body.auth-locked{overflow:hidden}
+body.auth-locked,body.install-locked{overflow:hidden}
+.install-locked .app-shell,.install-locked .nav{filter:blur(5px);pointer-events:none;user-select:none}
 @media (max-height:760px){
   .auth-logo{width:72px;height:72px;margin-bottom:10px}
   .auth-card{padding:16px}

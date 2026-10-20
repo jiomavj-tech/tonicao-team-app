@@ -102,6 +102,55 @@
     return r;
   };
 
+  /* ---- Portão de instalação: depois de entrar, pede para instalar antes de usar ----
+     Tem uma saída pequena de propósito. A conferência de "está instalado" não é
+     exata em todo navegador, e quem abre pelo navegador de dentro do WhatsApp não
+     consegue instalar — sem a saída, essa pessoa ficaria trancada fora do app. */
+  function pulouAgora(){try{return sessionStorage.getItem("tonicao_pular_instalar")==="1"}catch(e){return false}}
+  window.pularInstalacaoV051=function(){
+    try{sessionStorage.setItem("tonicao_pular_instalar","1")}catch(e){}
+    document.getElementById("instalarGate")?.remove();
+    document.body.classList.remove("install-locked");
+  };
+  window.conferirInstalacaoV051=function(){
+    if(jaInstalado()){
+      document.getElementById("instalarGate")?.remove();
+      document.body.classList.remove("install-locked");
+      toast("Instalado. Bom treino! 🥋");return;
+    }
+    toast("Ainda não. Depois de adicionar, abra o app pelo ícone novo da tela.");
+  };
+  async function portaoInstalar(){
+    try{
+      if(jaInstalado()||pulouAgora())return;
+      if(document.getElementById("instalarGate"))return;
+      let me=null;try{me=await TonicaoAuth.currentUser()}catch(e){}
+      if(!me)return;                                   // só depois de entrar
+      const p=PASSOS[aparelho()],android=!!convite;
+      const g=document.createElement("div");
+      g.id="instalarGate";g.className="auth-gate show";
+      g.innerHTML=`<div class="auth-card">
+        <img src="./assets/logo-tonicao.jpg" alt="" class="auth-logo">
+        <h2>📲 Instale o aplicativo</h2>
+        <p class="small muted" style="text-align:center">Falta só isto para começar. Instalado, ele abre em tela cheia, carrega mais rápido e funciona sem internet no tatame.</p>
+        ${android?`<button class="btn primary full" style="margin-top:14px" onclick="instalarAppV051()">Instalar agora</button>`:
+        `<div class="list" style="margin-top:14px">${p.passos.map((x,i)=>`<div class="list-item" style="cursor:default">
+          <div class="icon">${i+1}</div><div class="meta"><strong>${x}</strong></div></div>`).join("")}</div>
+        ${p.nota?`<div class="notice small" style="margin-top:10px">${p.nota}</div>`:""}`}
+        <button class="btn ${android?"secondary":"primary"} full" style="margin-top:10px" onclick="conferirInstalacaoV051()">Já instalei</button>
+        <p class="small muted" style="margin-top:16px;text-align:center">
+          <a href="#" onclick="pularInstalacaoV051();return false">Não consigo instalar agora</a></p>
+      </div>`;
+      document.body.appendChild(g);
+      document.body.classList.add("install-locked");
+    }catch(e){console.warn("portão de instalação",e)}
+  }
+  const baseAll=window.renderAll;
+  if(typeof baseAll==="function"){
+    window.renderAll=async function(...a){const r=await baseAll.apply(this,a);setTimeout(portaoInstalar,250);return r};
+  }
+  window.addEventListener("load",()=>setTimeout(portaoInstalar,2500));
+
   /* Aviso discreto no Início, uma vez só, para quem ainda não instalou. */
   function avisoNaHome(){
     try{
