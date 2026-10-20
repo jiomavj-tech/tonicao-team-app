@@ -375,7 +375,7 @@ body.auth-locked,body.install-locked{overflow:hidden}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.53</p>
+        <p id="topSubtitle">Piloto offline-first • v0.54</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -2145,7 +2145,40 @@ async function buildCompletionLink(request){
 async function inviteMessageForRequest(request){
   const settings=await getSettings(),link=await buildCompletionLink(request);
   const academy=settings.academyName||settings.academy||"academia";
-  const text=`Olá, ${request.name}! O Professor iniciou seu cadastro na ${academy}. Para concluir, abra o link e preencha seus dados: ${link||"[link público ainda não configurado]"}. Depois o Professor apenas confirma seu cadastro.`;
+  /* v0.54: a mensagem virou um passo a passo. Era só um link solto, e a pessoa
+     não sabia o que ia encontrar, nem que precisava instalar, nem a regra da senha. */
+  const primeiro=String(request.name||"").split(" ")[0];
+  const text=
+`Olá, ${primeiro}! 🥋 Seu cadastro na ${academy} já foi iniciado pelo Professor. Falta só você concluir — leva 3 minutos.
+
+*1. Abra o link*
+${link||"[link público ainda não configurado]"}
+
+*2. Preencha seus dados*
+Nome completo, nascimento e telefone.
+
+*3. Crie sua senha*
+Ela precisa ter:
+• 9 caracteres ou mais
+• 1 letra MAIÚSCULA
+• 1 letra minúscula
+• 1 número
+• 1 símbolo (. ! @ # * -)
+Exemplo de senha boa: Tatame@2026
+A própria tela vai marcando ✓ conforme você digita.
+
+*4. Instale o app no celular*
+Depois de entrar, aparece o passo a passo na tela. É rápido e deixa o app com ícone próprio.
+No iPhone: botão Compartilhar → Adicionar à Tela de Início.
+No Android: toque em Instalar.
+
+*Para que serve*
+• Marcar presença no treino, lendo o QR do Professor
+• Ver sua faixa, seus graus e quanto falta para graduar
+• Acompanhar seus treinos e sua pontuação
+• Receber avisos da academia
+
+Pronto isso, o Professor confirma seu cadastro e você já começa a usar. Qualquer dúvida, é só chamar. Oss! 👊`;
   return {link,text}
 }
 async function shareRegistrationInvite(requestId){
@@ -2164,7 +2197,15 @@ async function shareSelfRegistrationLink(){
   const settings=await getSettings(),base=await getPublicAppUrl();
   if(!base){toast("O Administrador/Dono precisa configurar o link público do aplicativo.");return}
   const link=tenantUrlV027(base,{join:"1"});
-  const text=`Faça seu pré-cadastro na ${settings.academyName||"academia"}: ${link}`;
+  const text=
+`🥋 *Pré-cadastro na ${settings.academyName||"academia"}*
+
+Faça o seu por aqui, leva 3 minutos:
+${link}
+
+*Na hora de criar a senha*, ela precisa ter 9 caracteres ou mais, 1 letra MAIÚSCULA, 1 minúscula, 1 número e 1 símbolo. Exemplo: Tatame@2026 — a tela vai marcando ✓ conforme você digita.
+
+Depois de entrar, o app mostra como instalar no seu celular. Aí é só usar: presença pelo QR, sua faixa, seus treinos e os avisos da academia. 👊`;
   if(navigator.share){try{await navigator.share({title:"Cadastro na academia",text,url:link});return}catch(e){}}
   await navigator.clipboard?.writeText(link);toast("Link de auto-cadastro copiado.")
 }
@@ -2992,7 +3033,7 @@ async function savePlanEditor(planId=""){
   closeModal();toast("Plano de graduação salvo.");renderGraduation()
 }
 
-// v0.53: quantidade separada do nome, com − e +.
+// v0.54: quantidade separada do nome, com − e +.
 function splitReq(text){
   const m=String(text||"").trim().match(/^(\d+)\s+(.*)$/);
   if(!m)return {qty:1,name:String(text||"").trim()};
@@ -4222,7 +4263,7 @@ async function renderAuthGate(){
 
   const gate=document.getElementById("authGate"),host=document.getElementById("authGateContent");
   if(window.TonicaoFirebase?.configured)return await renderCloudAuthGate(gate,host);
-  /* v0.53: esta instalação usa servidor (window.TONICAO_FIREBASE existe), mas o
+  /* v0.54: esta instalação usa servidor (window.TONICAO_FIREBASE existe), mas o
      programa do Firebase não carregou — em geral internet ruim no primeiro acesso.
      NUNCA cair na criação de Dono local aqui: isso criaria uma conta solta, presa
      a este aparelho e sem ligação com a academia. */
@@ -4277,7 +4318,7 @@ async function updateAccountButton(){
   btn.style.display=me?"inline-flex":"none";btn.style.alignItems="center";btn.style.justifyContent="center";
   if(me)btn.title=`${me.name||"Minha conta"} — trocar de conta`;
 }
-/* v0.53: o link de primeira configuração sai da tela de entrada.
+/* v0.54: o link de primeira configuração sai da tela de entrada.
    A academia já tem Dono: ele entra com e-mail e senha e o app reconhece que é o Administrador.
    Para montar outra unidade, abrir o app com ?setup=1 no fim do endereço. */
 function showFirstSetupLink(){
@@ -4430,12 +4471,12 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.53`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.54`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
-// v0.53: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
+// v0.54: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
 let syncRedrawPending=false,syncRedrawTimer=null,lastTouchAt=0;
 for(const ev of ["pointerdown","touchstart","keydown","scroll","wheel"])
   window.addEventListener(ev,()=>{lastTouchAt=Date.now()},{passive:true,capture:true});
@@ -5277,6 +5318,102 @@ window.addEventListener("load",()=>setTimeout(async()=>{
   }).observe(document.documentElement,{childList:true,subtree:true});
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>scan());
   else scan();
+})();
+</script>
+<script>/* ===== password-help.js ===== */
+/* v0.54 — Ajuda ao criar a senha.
+   Enquanto a pessoa digita, mostra a lista de exigências e vai marcando o que
+   já cumpriu, com uma barra de força. Vale em todo campo de senha NOVA do app;
+   nos campos de entrar (senha já existente) não aparece, porque ali não há regra
+   a cumprir, só acertar a que já existe. */
+(()=>{
+  "use strict";
+  const CSS=`
+  .pwx{margin-top:8px}
+  .pwx-bar{height:7px;border-radius:999px;background:#e5e7eb;overflow:hidden}
+  .pwx-bar i{display:block;height:100%;width:0;border-radius:999px;transition:width .18s,background .18s}
+  .pwx-label{font-size:12px;font-weight:700;margin-top:6px}
+  .pwx-list{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:4px}
+  .pwx-list li{font-size:12.5px;color:#70737a;display:flex;align-items:flex-start;gap:7px;line-height:1.35}
+  .pwx-list li b{font-weight:700;color:#151515}
+  .pwx-list li.ok{color:#166534}
+  .pwx-list li.ok b{color:#166534}
+  .pwx-mark{width:16px;flex:0 0 16px;text-align:center}
+  .pwx-dica{font-size:12px;color:#70737a;margin-top:8px;background:#f4f5f7;border-radius:10px;padding:8px 10px}`;
+  const st=document.createElement("style");st.textContent=CSS;document.head.appendChild(st);
+
+  const REGRAS=[
+    {t:"Pelo menos <b>9 caracteres</b>",   ok:p=>p.length>=9},
+    {t:"Uma letra <b>MAIÚSCULA</b> (A-Z)", ok:p=>/[A-Z]/.test(p)},
+    {t:"Uma letra <b>minúscula</b> (a-z)", ok:p=>/[a-z]/.test(p)},
+    {t:"Um <b>número</b> (0-9)",           ok:p=>/[0-9]/.test(p)},
+    {t:'Um <b>símbolo</b>: . ! @ # * ou -',ok:p=>/[^A-Za-z0-9]/.test(p)}
+  ];
+  window.regrasDaSenhaV054=REGRAS;
+
+  /* Campo de senha NOVA? Os de entrar ficam de fora. */
+  function senhaNova(inp){
+    const id=(inp.id||"").toLowerCase();
+    if(/cloudpass|loginpass|^senha$/.test(id))return false;
+    const ac=(inp.getAttribute("autocomplete")||"").toLowerCase();
+    if(ac==="current-password")return false;
+    const rot=inp.closest(".field")?.querySelector("label")?.textContent||"";
+    if(/atual/i.test(rot))return false;
+    return true;
+  }
+
+  function avaliar(p){
+    const feitas=REGRAS.filter(r=>r.ok(p)).length;
+    let forca=feitas, label="", cor="#dc2626";
+    if(!p.length)return {feitas,pct:0,label:"",cor,completa:false};
+    const completa=feitas===REGRAS.length;
+    if(completa&&p.length>=14){forca=6;label="Senha muito forte";cor="#15803d"}
+    else if(completa){label="Senha forte";cor="#16a34a"}
+    else if(feitas>=4){label="Quase lá";cor="#d97706"}
+    else if(feitas>=2){label="Senha fraca";cor="#d97706"}
+    else {label="Senha muito fraca";cor="#dc2626"}
+    return {feitas,pct:Math.round(Math.min(forca,6)/6*100),label,cor,completa};
+  }
+
+  function montar(inp){
+    if(inp.dataset.pwxOn)return;
+    if(!senhaNova(inp))return;
+    inp.dataset.pwxOn="1";
+    const alvo=inp.closest(".pw-wrap")||inp;          // o olhinho da v0.38 embrulha o campo
+    const box=document.createElement("div");
+    box.className="pwx";
+    box.innerHTML=`<div class="pwx-bar"><i></i></div>
+      <div class="pwx-label"></div>
+      <ul class="pwx-list">${REGRAS.map(r=>`<li><span class="pwx-mark">○</span><span>${r.t}</span></li>`).join("")}</ul>
+      <div class="pwx-dica">Dica: junte duas palavras que você lembra e termine com número e símbolo. Ex.: <b>Tatame@2026</b></div>`;
+    (alvo.parentNode||inp.parentNode).insertBefore(box,(alvo.nextSibling||null));
+    const barra=box.querySelector(".pwx-bar i"),rotulo=box.querySelector(".pwx-label"),itens=[...box.querySelectorAll(".pwx-list li")];
+    function atualizar(){
+      const p=inp.value||"",a=avaliar(p);
+      barra.style.width=a.pct+"%";barra.style.background=a.cor;
+      rotulo.textContent=a.label;rotulo.style.color=a.cor;
+      REGRAS.forEach((r,i)=>{
+        const ok=r.ok(p);
+        itens[i].classList.toggle("ok",ok);
+        itens[i].querySelector(".pwx-mark").textContent=ok?"✓":"○";
+      });
+    }
+    inp.addEventListener("input",atualizar);
+    inp.addEventListener("focus",atualizar);
+    atualizar();
+  }
+
+  function varrer(raiz){
+    try{(raiz||document).querySelectorAll?.('input[type="password"],input[data-pw-eye]').forEach(montar)}catch(e){}
+  }
+  new MutationObserver(ms=>{
+    for(const m of ms)for(const n of m.addedNodes){
+      if(n.nodeType!==1)continue;
+      if(n.matches?.('input[type="password"]'))montar(n);else varrer(n);
+    }
+  }).observe(document.documentElement,{childList:true,subtree:true});
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>varrer());
+  else varrer();
 })();
 </script>
 <script>/* ===== features-v047.js ===== */
