@@ -55,8 +55,16 @@
     students: {
       title: "Alunos — Cadastro e fichas",
       steps: [
-        ["Toque em \"+ Cadastro rápido\", coloque nome e WhatsApp e toque em \"Cadastrar e enviar link\".",
-         "O aluno recebe um link e preenche os próprios dados. Você digita o mínimo."],
+        ["No topo há dois caminhos: \"📩 Aluno preenche\" manda o link pelo WhatsApp; \"✍️ Eu cadastro\" é você digitando.",
+         "Os dois servem. Use o link para adulto que se vira com celular, e digite você quando ele estiver no tatame agora."],
+        ["Em \"✍️ Eu cadastro\", o telefone é opcional. Sem telefone, o botão vira \"Cadastrar ficha\" e cria a ficha na hora, sem convite.",
+         "É assim que se cadastra o Baby e a criança cujos pais você não tem contato. Ela treina, pontua e gradua; só não usa o aplicativo."],
+        ["Ficha e conta de acesso são coisas diferentes. A ficha é o cadastro; a conta é o e-mail e a senha que abrem o app no celular do aluno.",
+         "Um aluno pode ter ficha sem conta, como o Baby. Em \"🔐 Contas de acesso\" você liga uma coisa à outra."],
+        ["Quando alguém entra com o Google, aparece em \"🔐 Contas de acesso\" como aguardando liberação, e a seção sobe para o topo da aba.",
+         "Toque em Liberar e escolha a ficha. Sem isso a pessoa tem conta, mas não enxerga nada."],
+        ["Aluno sem Gmail? Use \"➕ Criar acesso com e-mail e senha\": você define a senha, confere pelo 👁 e manda pelo WhatsApp.",
+         "A senha aparece uma vez só. Depois ninguém consegue vê-la, nem você — o servidor guarda só um cálculo embaralhado."],
         ["Em \"Aguardando confirmação\", toque em \"Confirmar cadastro\" ou \"Recusar\".",
          "Só entra na academia quem você aprovou."],
         ["Toque no aluno para abrir a ficha: Foto, Graduação, Trilha/Faixa e Convite.",
@@ -291,7 +299,37 @@
   };
 
   const ROLE_LABEL = { admin: "Administrador/Dono", professor: "Professor", aluno: "Aluno" };
-  const ORDER = ["home", "checkin", "students", "graduation", "more"];
+  const SENHA = {
+    title: "Senha — regra e o que fazer se esquecer",
+    steps: [
+      ["A senha precisa ter 9 caracteres ou mais, 1 letra MAIÚSCULA, 1 minúscula, 1 número e 1 símbolo (. ! @ # * -).",
+       "Ao criar, a tela vai marcando ✓ em cada exigência conforme você digita. Exemplo de senha boa: Tatame@2026"],
+      ["O 👁 ao lado do campo mostra o que você digitou.",
+       "Serve para conferir antes de salvar, e para ler a senha em voz alta para quem está do lado."],
+      ["Esqueceu? Na tela de entrada, toque em \"Esqueci a senha\" — uma vez só — e abra o e-mail mais recente na hora.",
+       "O link vale cerca de 1 hora e funciona uma vez. Se pedir de novo, o e-mail anterior deixa de valer. Olhe também o spam."],
+      ["Ninguém consegue ver a senha de ninguém: nem o Professor, nem o Dono.",
+       "O servidor guarda só um cálculo que não tem volta. É isso que protege cada um."]
+    ]
+  };
+  const INSTALAR = {
+    title: "Instalar o aplicativo no celular",
+    steps: [
+      ["Mais → \"📲 Instalar o aplicativo\", e siga os passos da tela.",
+       "Instalado, ele ganha ícone próprio, abre em tela cheia e carrega mais rápido."],
+      ["No iPhone: botão Compartilhar (o quadradinho com a seta para cima, na barra de baixo do Safari) → Adicionar à Tela de Início.",
+       "No iPhone só o Safari instala direito. Pelo navegador de dentro do WhatsApp não dá."],
+      ["No Android: toque em Instalar, ou nos três pontinhos do navegador → Instalar aplicativo.",
+       "Em alguns aparelhos o próprio app oferece a instalação com um toque."],
+      ["No iPhone, o app instalado é uma cópia separada do Safari: na primeira vez pelo ícone novo, ele pede e-mail e senha outra vez.",
+       "É só uma vez. Seus dados ficam no servidor da academia, não no aparelho."]
+    ]
+  };
+  PROF.senha = SENHA; PROF.instalar = INSTALAR;
+  ALUNO.senha = SENHA; ALUNO.instalar = INSTALAR;
+  ADMIN.senha = SENHA; ADMIN.instalar = INSTALAR;
+
+  const ORDER = ["home", "checkin", "students", "graduation", "more", "senha", "instalar"];
 
   function table(role) { return role === "aluno" ? ALUNO : role === "professor" ? PROF : ADMIN; }
 
