@@ -363,7 +363,7 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.47</p>
+        <p id="topSubtitle">Piloto offline-first • v0.48</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -2980,7 +2980,7 @@ async function savePlanEditor(planId=""){
   closeModal();toast("Plano de graduação salvo.");renderGraduation()
 }
 
-// v0.47: quantidade separada do nome, com − e +.
+// v0.48: quantidade separada do nome, com − e +.
 function splitReq(text){
   const m=String(text||"").trim().match(/^(\d+)\s+(.*)$/);
   if(!m)return {qty:1,name:String(text||"").trim()};
@@ -4248,7 +4248,7 @@ async function updateAccountButton(){
   btn.style.display=me?"inline-flex":"none";btn.style.alignItems="center";btn.style.justifyContent="center";
   if(me)btn.title=`${me.name||"Minha conta"} — trocar de conta`;
 }
-/* v0.47: o link de primeira configuração sai da tela de entrada.
+/* v0.48: o link de primeira configuração sai da tela de entrada.
    A academia já tem Dono: ele entra com e-mail e senha e o app reconhece que é o Administrador.
    Para montar outra unidade, abrir o app com ?setup=1 no fim do endereço. */
 function showFirstSetupLink(){
@@ -4401,12 +4401,12 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.47`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.48`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
-// v0.47: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
+// v0.48: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
 let syncRedrawPending=false,syncRedrawTimer=null,lastTouchAt=0;
 for(const ev of ["pointerdown","touchstart","keydown","scroll","wheel"])
   window.addEventListener(ev,()=>{lastTouchAt=Date.now()},{passive:true,capture:true});
@@ -5306,6 +5306,67 @@ window.addEventListener("load",()=>setTimeout(async()=>{
   }
   window.atualizarPainelDonoV047=function(){preencherNumeros()};
 
+  /* ---- Senhas: uma tela só, com todo mundo, e um toque para redefinir ---- */
+  let cacheUsers={at:0,list:null};
+  async function contas(force){
+    if(!force&&cacheUsers.list&&Date.now()-cacheUsers.at<30000)return cacheUsers.list;
+    const r=DB.clean(await TonicaoRemoteAuth.listRemoteUsers());
+    cacheUsers={at:Date.now(),list:r.users||[]};
+    return cacheUsers.list;
+  }
+  const PAPEL={admin:"Dono",professor:"Professor",aluno:"Aluno"};
+  function linha(u){
+    return `<div class="list-item" style="cursor:default">
+      <div class="icon">${u.role==="admin"?"🛡️":u.role==="professor"?"🥋":"👤"}</div>
+      <div class="meta" style="flex:1"><strong>${esc(u.name||u.email||"Sem nome")}</strong>
+        <span class="small muted">${esc(u.email||"sem e-mail")} • ${PAPEL[u.role]||u.role}${u.active===false?" • bloqueado":""}</span></div>
+      ${u.email?`<button class="btn secondary" onclick="redefinirSenhaV047('${esc(u.id)}')">🔑 Redefinir</button>`:""}
+    </div>`;
+  }
+  window.telaSenhasV047=async function(force){
+    showModal(`<h3>🔑 Senhas</h3><p class="small muted">Carregando contas…</p>`);
+    try{
+      const us=(await contas(force)).slice().sort((a,b)=>String(a.name||a.email).localeCompare(String(b.name||b.email)));
+      const equipe=us.filter(u=>u.role!=="aluno"),alunos=us.filter(u=>u.role==="aluno");
+      showModal(`<h3>🔑 Senhas</h3>
+        <p class="small muted">Um toque envia à pessoa o e-mail para ela criar a senha nova. O histórico dela não muda.</p>
+        <div class="section-title"><h2>Equipe</h2><button class="btn secondary" onclick="telaSenhasV047(true)">Atualizar</button></div>
+        <div class="list">${equipe.map(linha).join("")||`<div class="notice small">Nenhum professor cadastrado.</div>`}</div>
+        ${alunos.length?`<details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700">Alunos (${alunos.length})</summary>
+          <div class="list" style="margin-top:8px">${alunos.map(linha).join("")}</div></details>`:""}
+        <button class="btn secondary full" style="margin-top:12px" onclick="closeModal()">Fechar</button>`);
+    }catch(e){
+      showModal(`<h3>🔑 Senhas</h3><div class="notice payment small">${esc(e.message||"O servidor não respondeu.")}</div>
+        <button class="btn primary full" style="margin-top:10px" onclick="telaSenhasV047(true)">Tentar de novo</button>
+        <button class="btn secondary full" style="margin-top:8px" onclick="closeModal()">Fechar</button>`);
+    }
+  };
+  window.redefinirSenhaV047=async function(userId){
+    const u=(await contas()).find(x=>x.id===userId);if(!u)return;
+    const nome=String(u.name||u.email).split(" ")[0];
+    showModal(`<h3>🔑 Redefinir a senha de ${esc(nome)}</h3>
+      <div class="notice small"><strong>O que vai acontecer</strong><div class="small">
+        1. ${esc(u.email)} recebe um e-mail do app.<br>
+        2. Ela abre o link e cadastra a senha nova, duas vezes.<br>
+        3. Entra normalmente. Presenças, graduação e histórico ficam como estão.</div></div>
+      <div class="notice payment small" style="margin-top:10px"><strong>Avise ela antes</strong><div class="small">O link vale por cerca de 1 hora e só funciona uma vez. Se você pedir de novo, o e-mail anterior deixa de valer.</div></div>
+      <button class="btn primary full" style="margin-top:12px" onclick="enviarResetV047('${esc(userId)}')">📧 Enviar agora</button>
+      <button class="btn secondary full" style="margin-top:8px" onclick="telaSenhasV047()">Voltar</button>`);
+  };
+  window.enviarResetV047=async function(userId){
+    const u=(await contas()).find(x=>x.id===userId);
+    try{
+      await TonicaoRemoteAuth.resetRemotePassword({userId});
+      const nome=String(u?.name||"").split(" ")[0]||"a pessoa";
+      const aviso=`Oi ${nome}! Mandei no seu e-mail (${u?.email||""}) um link para você criar uma senha nova do app da academia. Abre agora, que ele vale por 1 hora. Qualquer coisa me chama. 👊`;
+      showModal(`<h3>✅ E-mail enviado</h3>
+        <p class="small muted">Enviado para <strong>${esc(u?.email||"")}</strong>. Peça para ela abrir agora e olhar também o spam.</p>
+        ${u?.phone?`<button class="btn green full" onclick="window.open('https://wa.me/${esc(phoneForWhatsApp(u.phone))}?text=${encodeURIComponent(aviso)}','_blank')">💬 Avisar pelo WhatsApp</button>`:
+          `<button class="btn secondary full" onclick="navigator.clipboard?.writeText(${JSON.stringify(aviso)});toast('Recado copiado.')">📋 Copiar recado para o WhatsApp</button>`}
+        <button class="btn secondary full" style="margin-top:8px" onclick="telaSenhasV047()">Voltar às senhas</button>`);
+    }catch(e){toast(e.message||"Não foi possível enviar.")}
+  };
+
   const baseHome=window.renderProfessorHome;
   window.renderProfessorHome=async function(...a){
     const r=await baseHome.apply(this,a);
@@ -5327,7 +5388,8 @@ window.addEventListener("load",()=>setTimeout(async()=>{
           <button class="op-btn" onclick="abrirNoMaisV047('newacademy')"><span class="op-ico">🏫</span>Cadastrar escola</button>
           <button class="op-btn" onclick="abrirNoMaisV047('users')"><span class="op-ico">🔐</span>Contas do app</button>
           <button class="op-btn" onclick="abrirNoMaisV047('academy')"><span class="op-ico">⚙️</span>Dados da academia</button>
-          <button class="op-btn wide" onclick="abrirNoMaisV047('backup')"><span class="op-ico">💾</span>Backup e sincronização</button>
+          <button class="op-btn" onclick="telaSenhasV047()"><span class="op-ico">🔑</span>Redefinir senha</button>
+          <button class="op-btn" onclick="abrirNoMaisV047('backup')"><span class="op-ico">💾</span>Backup</button>
         </div>
         <div class="op-nums">
           <div class="op-num"><b>${alunos}</b>aluno(s)</div>
