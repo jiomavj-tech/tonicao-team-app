@@ -375,7 +375,7 @@ body.auth-locked,body.install-locked{overflow:hidden}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.55</p>
+        <p id="topSubtitle">Piloto offline-first • v0.56</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -2145,7 +2145,7 @@ async function buildCompletionLink(request){
 async function inviteMessageForRequest(request){
   const settings=await getSettings(),link=await buildCompletionLink(request);
   const academy=settings.academyName||settings.academy||"academia";
-  /* v0.55: a mensagem virou um passo a passo. Era só um link solto, e a pessoa
+  /* v0.56: a mensagem virou um passo a passo. Era só um link solto, e a pessoa
      não sabia o que ia encontrar, nem que precisava instalar, nem a regra da senha. */
   const primeiro=String(request.name||"").split(" ")[0];
   const text=
@@ -3033,7 +3033,7 @@ async function savePlanEditor(planId=""){
   closeModal();toast("Plano de graduação salvo.");renderGraduation()
 }
 
-// v0.55: quantidade separada do nome, com − e +.
+// v0.56: quantidade separada do nome, com − e +.
 function splitReq(text){
   const m=String(text||"").trim().match(/^(\d+)\s+(.*)$/);
   if(!m)return {qty:1,name:String(text||"").trim()};
@@ -3488,6 +3488,17 @@ if(mode==="cloud"){
     const remoteUser=settings.remoteUser||null;
     document.getElementById("more").innerHTML=`
       <div class="section-title"><h2>Sincronização</h2><button class="btn secondary" onclick="renderMore()">Voltar</button></div>
+      ${(()=>{const L=window.__redrawLog||[];
+        if(!L.length)return `<div class="notice small"><strong>Atualizações de tela</strong><div class="small">Nenhuma desde que o aplicativo abriu.</div></div>`;
+        const agora=Date.now(),ultimaHora=L.filter(x=>agora-x.t<3600000).length;
+        const linhas=L.slice(-8).reverse().map(x=>{
+          const seg=Math.round((agora-x.t)/1000);
+          const quando=seg<60?`há ${seg}s`:`há ${Math.round(seg/60)}min`;
+          return `<div class="small">${quando} • ${esc(x.alvo)} • ${esc(x.causa)}</div>`;
+        }).join("");
+        return `<div class="notice small"><strong>Atualizações de tela — ${ultimaHora} na última hora</strong>
+          <div class="small muted" style="margin:4px 0 6px">Se este número estiver alto sem ninguém mexer no aplicativo, mande um print para o suporte.</div>${linhas}</div>`;
+      })()}
       <div class="cloud-status ${status.online?"online":"offline"}">
         <div><strong>${status.online?"🟢 Com internet":"⚪ Sem internet"}</strong><div class="small muted">${status.pending} alteração(ões) aguardando envio</div></div>
         <span class="pill ${status.pending?"amber":"green"}">${status.pending?"pendente":"em dia"}</span>
@@ -4240,6 +4251,20 @@ async function saveSystemAccess(){
 }
 function goPage(id){
   currentMainPage=id;
+  /* tela que ficou para trás durante uma sincronização: refaz agora */
+  try{
+    if(window.__telasSujas?.has(id)){
+      window.__telasSujas.delete(id);
+      setTimeout(()=>{
+        getSettings().then(s=>{
+          if(id==="home")s.role==="professor"?renderProfessorHome():renderStudentHome();
+          else if(id==="checkin")renderCheckin();
+          else if(id==="students")renderStudents();
+          else if(id==="graduation")renderGraduation();
+        }).catch(()=>{});
+      },0);
+    }
+  }catch(e){}
   document.querySelectorAll(".page").forEach(p=>p.classList.toggle("active",p.id===id));
   document.querySelectorAll(".nav button").forEach(b=>b.classList.toggle("active",b.dataset.page===id));
   if(id!=="more") currentMoreMode="menu";
@@ -4263,7 +4288,7 @@ async function renderAuthGate(){
 
   const gate=document.getElementById("authGate"),host=document.getElementById("authGateContent");
   if(window.TonicaoFirebase?.configured)return await renderCloudAuthGate(gate,host);
-  /* v0.55: esta instalação usa servidor (window.TONICAO_FIREBASE existe), mas o
+  /* v0.56: esta instalação usa servidor (window.TONICAO_FIREBASE existe), mas o
      programa do Firebase não carregou — em geral internet ruim no primeiro acesso.
      NUNCA cair na criação de Dono local aqui: isso criaria uma conta solta, presa
      a este aparelho e sem ligação com a academia. */
@@ -4318,7 +4343,7 @@ async function updateAccountButton(){
   btn.style.display=me?"inline-flex":"none";btn.style.alignItems="center";btn.style.justifyContent="center";
   if(me)btn.title=`${me.name||"Minha conta"} — trocar de conta`;
 }
-/* v0.55: o link de primeira configuração sai da tela de entrada.
+/* v0.56: o link de primeira configuração sai da tela de entrada.
    A academia já tem Dono: ele entra com e-mail e senha e o app reconhece que é o Administrador.
    Para montar outra unidade, abrir o app com ?setup=1 no fim do endereço. */
 function showFirstSetupLink(){
@@ -4471,12 +4496,12 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.55`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.56`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
-// v0.55: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
+// v0.56: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
 let syncRedrawPending=false,syncRedrawTimer=null,lastTouchAt=0;
 for(const ev of ["pointerdown","touchstart","keydown","scroll","wheel"])
   window.addEventListener(ev,()=>{lastTouchAt=Date.now()},{passive:true,capture:true});
@@ -4500,19 +4525,48 @@ function restoreViewState(st){
   st.abertos.forEach((aberto,i)=>{if(aberto&&ds[i])ds[i].open=true});
   if(st.y>0)window.scrollTo(0,st.y);
 }
-window.redrawIfIdle=async function(){
+/* v0.56: diário dos redesenhos. Serve para descobrir o que anda redesenhando
+   a tela sozinho: fica visível em Mais → Sincronização. */
+window.__redrawLog=[];
+function anotarRedesenho(causa,alvo){
+  window.__redrawLog.push({t:Date.now(),causa,alvo});
+  if(window.__redrawLog.length>60)window.__redrawLog.shift();
+}
+/* Redesenha SÓ a tela aberta. As outras ficam marcadas e se refazem quando a
+   pessoa entrar nelas. Antes, qualquer novidade reconstruía as cinco. */
+const telasSujas=new Set();
+window.__telasSujas=telasSujas;
+async function redrawPaginaAtual(){
+  const settings=await getSettings();
+  const alvo=currentMainPage||"home";
+  for(const p of ["home","checkin","students","graduation","more"])if(p!==alvo)telasSujas.add(p);
+  telasSujas.delete(alvo);
+  if(alvo==="home"){settings.role==="professor"?await renderProfessorHome():await renderStudentHome()}
+  else if(alvo==="checkin")await renderCheckin();
+  else if(alvo==="students")await renderStudents();
+  else if(alvo==="graduation")await renderGraduation();
+  else if(alvo==="more")await renderMore(currentMoreMode||"menu");
+  updateGlobalBack();
+  return alvo;
+}
+window.redrawIfIdle=async function(causa){
   if(userIsBusy()){
     syncRedrawPending=true;
     clearTimeout(syncRedrawTimer);
-    syncRedrawTimer=setTimeout(()=>{if(syncRedrawPending)redrawIfIdle()},3200);
+    syncRedrawTimer=setTimeout(()=>{if(syncRedrawPending)redrawIfIdle(causa||"adiado")},3200);
     return;
   }
   syncRedrawPending=false;clearTimeout(syncRedrawTimer);
   const st=captureViewState();
-  try{await renderAll()}catch(e){}
+  let alvo="?";
+  try{alvo=await redrawPaginaAtual()}catch(e){}
   restoreViewState(st);
+  anotarRedesenho(causa||"sincronização",alvo);
 };
-window.addEventListener("tonicao:data-synced",()=>{redrawIfIdle()});
+window.addEventListener("tonicao:data-synced",e=>{
+  const d=e.detail||{};
+  redrawIfIdle(`chegou do servidor (${d.applied||0} registro(s))`);
+});
 /* Enviou o que a pessoa fez: nada mudou na tela, só o indicador da
    tela de Sincronização, e só se ela estiver aberta. */
 window.addEventListener("tonicao:data-pushed",()=>{
