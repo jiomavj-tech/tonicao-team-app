@@ -201,13 +201,24 @@ textarea[readonly]{background:#f8fafc;font-size:11px;word-break:break-all}
 .cloud-row strong{text-align:right}
 
 
+/* v0.50: a tela de entrada precisa rolar em qualquer celular.
+   Três coisas garantem isso: a página de trás não rola junto (overflow:hidden
+   no body), o cartão não usa margem automática (que no iPhone deixava o fim
+   fora de alcance) e a logo encolhe em tela baixa. */
 .auth-gate{
   display:none;position:fixed;inset:0;z-index:1000;background:#0f1115;
-  align-items:flex-start;justify-content:center;overflow-y:auto;-webkit-overflow-scrolling:touch;
-  padding:calc(20px + env(safe-area-inset-top,0px)) 20px calc(40px + env(safe-area-inset-bottom,0px))
+  align-items:flex-start;justify-content:center;
+  overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+  padding:calc(20px + env(safe-area-inset-top,0px)) 20px calc(48px + env(safe-area-inset-bottom,0px))
 }
-.auth-card{margin:auto 0}
+.auth-card{margin:0;flex:0 0 auto}
 .auth-gate.show{display:flex}
+body.auth-locked{overflow:hidden}
+@media (max-height:760px){
+  .auth-logo{width:72px;height:72px;margin-bottom:10px}
+  .auth-card{padding:16px}
+  .auth-card h2{font-size:19px}
+}
 .auth-card{
   width:min(460px,100%);background:#fff;border-radius:24px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.35)
 }
