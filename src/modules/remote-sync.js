@@ -44,7 +44,7 @@ const TonicaoCloud=(()=>{
     const id=String(value.id);
     if(store==="students"){
       const pub={};for(const k of PUBLIC_STUDENT)if(value[k]!==undefined)pub[k]=value[k];
-      batch.set(col("studentsPublic").doc(id),deleting?{_deleted:true,...F.meta()}:{id,json:JSON.stringify(pub),...F.meta()},{merge:deleting});
+      batch.set(col("studentsPublic").doc(id),deleting?{id,_deleted:true,...F.meta()}:{id,json:JSON.stringify(pub),...F.meta()});
     }
     if(store==="classSessions"&&!deleting&&value.code){
       const start=Date.parse(value.createdAt)||Date.now();
@@ -97,7 +97,10 @@ const TonicaoCloud=(()=>{
         }else{
           const batch=F.db.batch();
           if(q.op==="delete"){
-            batch.set(col(q.store).doc(q.recordId),{_deleted:true,...F.meta()},{merge:true});
+            /* v0.58: sem merge. Antes, apagar mantinha nome, telefone e nascimento
+               guardados no servidor com uma marca de apagado. Agora o documento
+               é substituído pela marca, e o dado pessoal sai de verdade. */
+            batch.set(col(q.store).doc(q.recordId),{id:q.recordId,_deleted:true,...F.meta()});
             extraWrites(q.store,{id:q.recordId},batch,true);
           }else{
             batch.set(col(q.store).doc(q.recordId),toDoc(q.store,q.value));
