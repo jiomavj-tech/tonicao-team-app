@@ -375,7 +375,7 @@ body.auth-locked,body.install-locked{overflow:hidden}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.59</p>
+        <p id="topSubtitle">Piloto offline-first • v0.60</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -1183,6 +1183,33 @@ const TonicaoRemoteAuth=(()=>{
       if(r.pending)throw new Error("Conta aguardando liberação do Professor ou Administrador.");return r}
     catch(e){throw e.code?friendly(e):e}
   }
+  /* v0.60: o próprio aluno cria a conta com e-mail e senha, e ela nasce
+     aguardando liberação — igual ao caminho do Google. As regras do servidor já
+     permitem isso (members: role 'aluno', active false, studentId vazio). */
+  async function selfSignUp({name,email,password}){
+    need();
+    {const prob=TonicaoAuth.passwordProblem?TonicaoAuth.passwordProblem(password):"";if(prob)throw new Error(prob)}
+    const mail=String(email).trim();
+    let cred;
+    try{cred=await F.auth.createUserWithEmailAndPassword(mail,password)}
+    catch(e){
+      if(e.code==="auth/email-already-in-use"){
+        /* já existe: pode ser o próprio aluno repetindo o cadastro */
+        try{cred=await F.auth.signInWithEmailAndPassword(mail,password)}
+        catch(x){throw new Error("Este e-mail já tem conta. Use \"Esqueci a senha\" na tela de entrada, ou fale com o Professor.")}
+      } else throw friendly(e);
+    }
+    try{await cred.user.updateProfile({displayName:name})}catch(e){}
+    try{
+      const ref=F.acad().collection("members").doc(cred.user.uid);
+      const atual=await ref.get();
+      if(!atual.exists){
+        await ref.set({uid:cred.user.uid,name,email:mail,picture:"",provider:"password",
+          role:"aluno",studentId:"",active:false,createdAt:new Date().toISOString(),...F.meta()});
+      }
+    }finally{try{await F.auth.signOut()}catch(e){}}
+    return {ok:true,email:mail};
+  }
   async function firstSetup({name,email,password,academyName}){
     need();
     {const prob=TonicaoAuth.passwordProblem?TonicaoAuth.passwordProblem(password):"";if(prob)throw new Error(prob)}
@@ -1332,7 +1359,7 @@ const TonicaoRemoteAuth=(()=>{
   async function savePushSubscription(){return {ok:false}}
   async function removePushSubscription(){return {ok:false}}
 
-  return {login,firstSetup,googleSignIn,googleRedirectResult,sendPasswordReset,me,logout,listRemoteUsers,approveGoogleUser,createRemoteUser,updateRemoteUser,resetRemotePassword,remotePermissions,
+  return {login,selfSignUp,firstSetup,googleSignIn,googleRedirectResult,sendPasswordReset,me,logout,listRemoteUsers,approveGoogleUser,createRemoteUser,updateRemoteUser,resetRemotePassword,remotePermissions,
     createRegistrationInvite,getRegistrationInvite,completeRegistrationInvite,submitRegistrationRequest,listRegistrationRequests,decideRegistrationRequest,deleteRegistrationInvite,
     getAcademyAccess,setAcademyAccess,googleConfig,googleLogin,bootstrap,listRemoteNotifications,markRemoteNotificationsRead,pushConfig,savePushSubscription,removePushSubscription};
 })();
@@ -2148,7 +2175,7 @@ async function buildCompletionLink(request){
 async function inviteMessageForRequest(request){
   const settings=await getSettings(),link=await buildCompletionLink(request);
   const academy=settings.academyName||settings.academy||"academia";
-  /* v0.59: a mensagem virou um passo a passo. Era só um link solto, e a pessoa
+  /* v0.60: a mensagem virou um passo a passo. Era só um link solto, e a pessoa
      não sabia o que ia encontrar, nem que precisava instalar, nem a regra da senha. */
   const primeiro=String(request.name||"").split(" ")[0];
   const text=
@@ -2265,7 +2292,10 @@ async function renderStudentCompletionGate(token){
     <p class="muted">O Professor já iniciou seu cadastro. Agora complete seus dados e envie para confirmação.</p>
     <div class="field"><label>Nome completo</label><input id="icName" value="${r.name||""}"></div>
     <div class="field"><label>Telefone / WhatsApp</label><input id="icPhone" inputmode="tel" value="${r.phone||""}"></div>
-    <div class="field"><label>E-mail</label><input id="icEmail" type="email" value="${r.email||""}" placeholder="Opcional"></div>
+    <div class="field"><label>E-mail</label><input id="icEmail" type="email" value="${r.email||""}" placeholder="seu@email.com">
+      <p class="small muted" style="margin-top:6px">É com este e-mail que você vai entrar no aplicativo. No Kids, use o e-mail do responsável.</p></div>
+    <div class="field"><label>Crie sua senha</label><input id="icPass" type="password" autocomplete="new-password"></div>
+    <div class="field"><label>Repita a senha</label><input id="icPass2" type="password" autocomplete="new-password"></div>
     <div class="field"><label>Data de nascimento</label><input id="icBirth" type="date" value="${r.birth||""}"></div>
     <div class="field"><label>Trilha</label><select id="icTrack" onchange="updateCompletionBelts()"><option value="adulto" ${track==="adulto"?"selected":""}>Adulto</option><option value="kids" ${track==="kids"?"selected":""}>Kids</option></select></div>
     <div class="field"><label>Faixa atual</label><select id="icBelt">${publicBeltOptions(track,r.belt||"Branca")}</select></div>
@@ -2293,9 +2323,18 @@ async function submitInvitedStudentCompletion(token){
   const gName=track==="kids"?document.getElementById("icGuardianName").value.trim():"";
   const gPhone=track==="kids"?document.getElementById("icGuardianPhone").value.trim():"";
   if(track==="kids"&&(!gName||!gPhone)){toast("Para Kids, informe nome e telefone do responsável.");return}
+  const emailIc=document.getElementById("icEmail").value.trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailIc)){toast("Informe um e-mail válido: é com ele que você vai entrar no aplicativo.");return}
+  const senhaIc=document.getElementById("icPass")?.value||"",senhaIc2=document.getElementById("icPass2")?.value||"";
+  {const prob=TonicaoAuth.passwordProblem?TonicaoAuth.passwordProblem(senhaIc):"";if(prob){toast(prob);return}}
+  if(senhaIc!==senhaIc2){toast("As duas senhas não são iguais.");return}
+  if(window.TonicaoFirebase?.configured&&navigator.onLine){
+    try{await TonicaoRemoteAuth.selfSignUp({name,email:emailIc,password:senhaIc})}
+    catch(e){toast(e.message||"Não foi possível criar sua conta.");return}
+  }
   const consentAt=new Date().toISOString();
   const payload={
-    name,phone,email:document.getElementById("icEmail").value.trim(),birth,
+    name,phone,email:emailIc,birth,
     graduationTrack:track,belt:document.getElementById("icBelt").value,stripes:Number(document.getElementById("icStripes").value||0),
     guardianName:gName,
     guardianPhone:gPhone,
@@ -2333,6 +2372,8 @@ async function studentSelfRegistrationModal(){
     <div class="field"><label>Telefone / WhatsApp</label><input id="srPhone" inputmode="tel" placeholder="(48) 99999-9999"></div>
     <div class="field"><label>E-mail</label><input id="srEmail" type="email" inputmode="email" autocomplete="email" placeholder="seu@email.com">
       <p class="small muted" style="margin-top:6px">É com este e-mail que você vai entrar no aplicativo. No Kids, use o e-mail do responsável.</p></div>
+    <div class="field"><label>Crie sua senha</label><input id="srPass" type="password" autocomplete="new-password"></div>
+    <div class="field"><label>Repita a senha</label><input id="srPass2" type="password" autocomplete="new-password"></div>
     <div class="field"><label>Data de nascimento</label><input id="srBirth" type="date"></div>
     <div class="field"><label>Trilha</label><select id="srTrack" onchange="toggleSelfRegGuardianV027()"><option value="adulto">Adulto</option><option value="kids">Kids</option></select></div>
     <div id="srGuardianWrap" style="display:none">
@@ -2351,6 +2392,9 @@ async function submitStudentRegistration(){
   const email=(document.getElementById("srEmail")?.value||"").trim();
   if(!name||!phone||!birth){toast("Informe nome, telefone e data de nascimento.");return}
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast("Informe um e-mail válido: é com ele que você vai entrar no aplicativo.");return}
+  const senha=document.getElementById("srPass")?.value||"",senha2=document.getElementById("srPass2")?.value||"";
+  {const prob=TonicaoAuth.passwordProblem?TonicaoAuth.passwordProblem(senha):"";if(prob){toast(prob);return}}
+  if(senha!==senha2){toast("As duas senhas não são iguais.");return}
   if(!document.getElementById("srPrivacyConsent")?.checked){toast("Confirme o consentimento de privacidade para continuar.");return}
   const track=document.getElementById("srTrack").value;
   const guardianName=track==="kids"?document.getElementById("srGuardianName").value.trim():"";
@@ -2358,6 +2402,12 @@ async function submitStudentRegistration(){
   if(track==="kids"&&(!guardianName||!guardianPhone)){toast("Para Kids, informe nome e telefone do responsável.");return}
   const consentAt=new Date().toISOString(),settings=await getSettings();
   const req={id:uid("reg"),academyId:settings.academyId||currentAcademyIdV027(),name,phone,email,birth,graduationTrack:track,guardianName,guardianPhone,note:document.getElementById("srNote").value.trim(),privacyConsentAt:consentAt,guardianConsentAt:track==="kids"?consentAt:"",status:"pending",source:"self",createdAt:new Date().toISOString()};
+  /* v0.60: a conta do aluno nasce aqui, com a senha que ele mesmo escolheu.
+     Ela fica aguardando liberação até o Professor aprovar o cadastro. */
+  if(window.TonicaoFirebase?.configured&&navigator.onLine){
+    try{await TonicaoRemoteAuth.selfSignUp({name,email,password:senha})}
+    catch(e){toast(e.message||"Não foi possível criar sua conta.");return}
+  }
   try{
     if((settings.cloudEndpoint||window.TonicaoFirebase?.configured)&&navigator.onLine){
       const remote=await TonicaoRemoteAuth.submitRegistrationRequest(req);
@@ -2393,11 +2443,32 @@ async function approveRegistrationRequest(requestId){
   try{if(r.remoteId)await TonicaoRemoteAuth.decideRegistrationRequest({requestId:r.remoteId,status:"approved",studentId:student.id})}catch(e){}
   await TonicaoAuth.audit("student.request.approve","Cadastro de aluno confirmado pelo Professor",student.id,{requestId});
   await createTargetedNotification("student_approved","Cadastro aprovado","Seu cadastro foi confirmado pelo Professor.",{targetStudentId:student.id,refId:r.id});
-  toast("✓ Cadastro confirmado.");await renderAll();
-  /* v0.59: sem isto o aluno ficava com ficha e sem conta — o "limbo".
-     Oferece criar o acesso logo depois de aprovar, com o e-mail já preenchido. */
-  setTimeout(()=>ofereceAcessoV057(student.id,student.name,student.email||""),250);
+  /* v0.60: se a pessoa criou a conta no próprio cadastro, aprovar o cadastro
+     também libera o acesso dela. Sem isto ficaria aguardando liberação para sempre. */
+  let ligou=false;
+  if(student.email&&window.TonicaoFirebase?.configured){
+    try{
+      const lista=DB.clean(await TonicaoRemoteAuth.listRemoteUsers()).users||[];
+      const conta=lista.find(u=>String(u.email||"").toLowerCase()===String(student.email).toLowerCase());
+      if(conta&&!conta.studentId){
+        await TonicaoRemoteAuth.approveGoogleUser({userId:conta.id,role:"aluno",studentId:student.id});
+        ligou=true;
+      }
+    }catch(e){/* servidor fora do ar: cai na oferta manual */}
+  }
+  toast(ligou?"✓ Cadastro confirmado e acesso liberado.":"✓ Cadastro confirmado.");await renderAll();
+  if(ligou)setTimeout(()=>avisaAcessoLiberadoV060(student.name,student.email,student.phone),250);
+  else setTimeout(()=>ofereceAcessoV057(student.id,student.name,student.email||""),250);
 }
+window.avisaAcessoLiberadoV060=function(nome,email,telefone){
+  const primeiro=String(nome||"").split(" ")[0];
+  const msg=`Oi ${primeiro}! 🥋 Seu cadastro foi confirmado e seu acesso já está liberado. É só entrar no aplicativo com o seu e-mail (${email}) e a senha que você criou. Bom treino! 👊`;
+  showModal(`<h3>✅ ${esc(primeiro)} já pode entrar</h3>
+    <p class="small muted">O acesso foi ligado sozinho, porque a conta foi criada no próprio cadastro. Não precisa criar senha nenhuma.</p>
+    <div class="notice small"><strong>Entra com</strong><div class="small">${esc(email||"")} e a senha que ${esc(primeiro)} mesmo escolheu</div></div>
+    ${telefone?`<button class="btn green full" style="margin-top:12px" onclick="window.open('https://wa.me/${esc(phoneForWhatsApp(telefone))}?text=${encodeURIComponent(msg)}','_blank')">💬 Avisar pelo WhatsApp</button>`:""}
+    <button class="btn secondary full" style="margin-top:8px" onclick="closeModal()">Fechar</button>`);
+};
 window.ofereceAcessoV057=function(studentId,nome,email){
   const primeiro=String(nome||"").split(" ")[0];
   showModal(`<h3>✓ ${esc(primeiro)} está cadastrado</h3>
@@ -2700,6 +2771,8 @@ function newStudentModal(){
     </div>
     <div class="field"><label>Nome</label><input id="nsName" placeholder="Nome do aluno"></div>
     <div class="field"><label>Telefone / WhatsApp <span class="small muted">(opcional)</span></label><input id="nsPhone" inputmode="tel" placeholder="(48) 99999-9999" oninput="updateQuickSaveLabel()"></div>
+    <div class="field"><label>E-mail do aluno <span class="small muted">(opcional)</span></label><input id="nsEmail" type="email" placeholder="aluno@email.com">
+      <p class="small muted" style="margin-top:6px">Se preencher, o acesso dele já nasce pronto para ser criado. Deixe vazio para quem não vai usar o aplicativo.</p></div>
     <div class="field"><label>Trilha</label><select id="nsTrack"><option value="adulto">Adulto</option><option value="kids">Kids</option></select></div>
     <p class="small muted" id="nsNoPhoneHint">Sem telefone: a ficha é criada e o Professor marca presença pelo check-in manual. O aluno não usa o app.</p>
     <button class="btn primary full" id="nsSaveBtn" onclick="saveQuickStudentInvite()">Cadastrar ficha</button>
@@ -2720,7 +2793,7 @@ async function saveQuickStudentInvite(){
   const track=document.getElementById("nsTrack")?.value||"adulto";
   if(!phone){                                   // Kids sem contato, ou quem não usa celular
     const belt=track==="kids"?"Cinza":"Branca";
-    const student={id:uid("s"),name,nickname:name.split(" ")[0],phone:"",birth:"",graduationTrack:track,belt,stripes:0,
+    const student={id:uid("s"),name,nickname:name.split(" ")[0],phone:"",email:(document.getElementById("nsEmail")?.value||"").trim(),birth:"",graduationTrack:track,belt,stripes:0,
       classesInBelt:0,points:0,payment:"liberado",dueDay:10,active:true,createdAt:new Date().toISOString()};
     await DB.put("students",student);
     await TonicaoAuth.audit("student.create","Aluno cadastrado sem contato",student.id,{graduationTrack:track});
@@ -2734,7 +2807,7 @@ async function saveQuickStudentInvite(){
   if(existingReq){closeModal();toast("Já existe um cadastro em andamento para este telefone.");setTimeout(()=>shareRegistrationInvite(existingReq.id),120);return}
 
   const settings=await getSettings();
-  let req={id:uid("reg"),academyId:settings.academyId||"tonicao-sul-ilha",name,phone,graduationTrack:track,status:"invited",source:"professor_invite",inviteToken:localInviteToken(),createdAt:new Date().toISOString(),invitedBy:me.id};
+  let req={id:uid("reg"),academyId:settings.academyId||"tonicao-sul-ilha",name,phone,email:(document.getElementById("nsEmail")?.value||"").trim(),graduationTrack:track,status:"invited",source:"professor_invite",inviteToken:localInviteToken(),createdAt:new Date().toISOString(),invitedBy:me.id};
   try{
     if(settings.cloudEndpoint&&settings.cloudSessionToken&&navigator.onLine){
       const remote=await TonicaoRemoteAuth.createRegistrationInvite({name,phone});
@@ -2751,6 +2824,7 @@ function fullStudentModal(){
   showModal(`<h3>Cadastro completo manual</h3>
     <div class="field"><label>Nome completo</label><input id="nsName"></div>
     <div class="field"><label>Telefone / WhatsApp</label><input id="nsPhone" inputmode="tel" placeholder="(48) 99999-9999"></div>
+    <div class="field"><label>E-mail <span class="small muted">(opcional)</span></label><input id="nsEmail" type="email" placeholder="aluno@email.com"></div>
     <div class="field"><label>Data de nascimento</label><input id="nsBirth" type="date"></div>
     <div class="field"><label>Trilha de graduação</label><select id="nsTrack" onchange="updateNewStudentBelts()"><option value="adulto">Adulto</option><option value="kids">Kids</option></select></div>
     <div class="field"><label>Faixa</label><select id="nsBelt"></select></div>
@@ -2801,7 +2875,7 @@ async function saveNewStudent(){
   await TonicaoAuth.requirePerm("manage_students");
   const name=document.getElementById("nsName").value.trim();if(!name){toast("Informe o nome.");return}
   const graduationTrack=document.getElementById("nsTrack").value||"adulto",belt=document.getElementById("nsBelt").value;
-  const student={id:uid("s"),name,nickname:name.split(" ")[0],phone:document.getElementById("nsPhone").value.trim(),birth:document.getElementById("nsBirth").value,graduationTrack,belt,stripes:+document.getElementById("nsStripes").value||0,classesInBelt:0,targetClasses:targetClassesFor(graduationTrack,belt),streak:0,points:0,dueDay:+document.getElementById("nsDue").value||10,payment:"verificar",active:true,photo:""};
+  const student={id:uid("s"),name,nickname:name.split(" ")[0],phone:document.getElementById("nsPhone").value.trim(),email:(document.getElementById("nsEmail")?.value||"").trim(),birth:document.getElementById("nsBirth").value,graduationTrack,belt,stripes:+document.getElementById("nsStripes").value||0,classesInBelt:0,targetClasses:targetClassesFor(graduationTrack,belt),streak:0,points:0,dueDay:+document.getElementById("nsDue").value||10,payment:"verificar",active:true,photo:""};
   await DB.put("students",student);
   closeModal();await TonicaoAuth.audit("student.create","Aluno cadastrado",student.id,{graduationTrack,phone:student.phone});toast("Aluno cadastrado.");await renderAll();if(student.phone)setTimeout(()=>quickInvite(student.id),120)
 }
@@ -3053,7 +3127,7 @@ async function savePlanEditor(planId=""){
   closeModal();toast("Plano de graduação salvo.");renderGraduation()
 }
 
-// v0.59: quantidade separada do nome, com − e +.
+// v0.60: quantidade separada do nome, com − e +.
 function splitReq(text){
   const m=String(text||"").trim().match(/^(\d+)\s+(.*)$/);
   if(!m)return {qty:1,name:String(text||"").trim()};
@@ -4308,7 +4382,7 @@ async function renderAuthGate(){
 
   const gate=document.getElementById("authGate"),host=document.getElementById("authGateContent");
   if(window.TonicaoFirebase?.configured)return await renderCloudAuthGate(gate,host);
-  /* v0.59: esta instalação usa servidor (window.TONICAO_FIREBASE existe), mas o
+  /* v0.60: esta instalação usa servidor (window.TONICAO_FIREBASE existe), mas o
      programa do Firebase não carregou — em geral internet ruim no primeiro acesso.
      NUNCA cair na criação de Dono local aqui: isso criaria uma conta solta, presa
      a este aparelho e sem ligação com a academia. */
@@ -4363,7 +4437,7 @@ async function updateAccountButton(){
   btn.style.display=me?"inline-flex":"none";btn.style.alignItems="center";btn.style.justifyContent="center";
   if(me)btn.title=`${me.name||"Minha conta"} — trocar de conta`;
 }
-/* v0.59: o link de primeira configuração sai da tela de entrada.
+/* v0.60: o link de primeira configuração sai da tela de entrada.
    A academia já tem Dono: ele entra com e-mail e senha e o app reconhece que é o Administrador.
    Para montar outra unidade, abrir o app com ?setup=1 no fim do endereço. */
 function showFirstSetupLink(){
@@ -4393,7 +4467,7 @@ async function renderCloudAuthGate(gate,host){
   setTimeout(()=>TonicaoGoogle.renderButton("googleLoginArea"),30);
   return false;
 }
-/* v0.59: lembra quais contas já entraram NESTE aparelho, só para preencher o
+/* v0.60: lembra quais contas já entraram NESTE aparelho, só para preencher o
    e-mail com um toque. Senha nunca é guardada — essa fica com o celular. */
 const PAPEL_CURTO={admin:"Dono",professor:"Professor",aluno:"Aluno"};
 function lerContasV059(){
@@ -4551,12 +4625,12 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.59`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.60`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
-// v0.59: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
+// v0.60: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
 let syncRedrawPending=false,syncRedrawTimer=null,lastTouchAt=0;
 for(const ev of ["pointerdown","touchstart","keydown","scroll","wheel"])
   window.addEventListener(ev,()=>{lastTouchAt=Date.now()},{passive:true,capture:true});
@@ -4580,7 +4654,7 @@ function restoreViewState(st){
   st.abertos.forEach((aberto,i)=>{if(aberto&&ds[i])ds[i].open=true});
   if(st.y>0)window.scrollTo(0,st.y);
 }
-/* v0.59: diário dos redesenhos. Serve para descobrir o que anda redesenhando
+/* v0.60: diário dos redesenhos. Serve para descobrir o que anda redesenhando
    a tela sozinho: fica visível em Mais → Sincronização. */
 window.__redrawLog=[];
 function anotarRedesenho(causa,alvo){

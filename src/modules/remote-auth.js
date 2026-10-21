@@ -67,6 +67,33 @@ const TonicaoRemoteAuth=(()=>{
       if(r.pending)throw new Error("Conta aguardando liberação do Professor ou Administrador.");return r}
     catch(e){throw e.code?friendly(e):e}
   }
+  /* v0.60: o próprio aluno cria a conta com e-mail e senha, e ela nasce
+     aguardando liberação — igual ao caminho do Google. As regras do servidor já
+     permitem isso (members: role 'aluno', active false, studentId vazio). */
+  async function selfSignUp({name,email,password}){
+    need();
+    {const prob=TonicaoAuth.passwordProblem?TonicaoAuth.passwordProblem(password):"";if(prob)throw new Error(prob)}
+    const mail=String(email).trim();
+    let cred;
+    try{cred=await F.auth.createUserWithEmailAndPassword(mail,password)}
+    catch(e){
+      if(e.code==="auth/email-already-in-use"){
+        /* já existe: pode ser o próprio aluno repetindo o cadastro */
+        try{cred=await F.auth.signInWithEmailAndPassword(mail,password)}
+        catch(x){throw new Error("Este e-mail já tem conta. Use \"Esqueci a senha\" na tela de entrada, ou fale com o Professor.")}
+      } else throw friendly(e);
+    }
+    try{await cred.user.updateProfile({displayName:name})}catch(e){}
+    try{
+      const ref=F.acad().collection("members").doc(cred.user.uid);
+      const atual=await ref.get();
+      if(!atual.exists){
+        await ref.set({uid:cred.user.uid,name,email:mail,picture:"",provider:"password",
+          role:"aluno",studentId:"",active:false,createdAt:new Date().toISOString(),...F.meta()});
+      }
+    }finally{try{await F.auth.signOut()}catch(e){}}
+    return {ok:true,email:mail};
+  }
   async function firstSetup({name,email,password,academyName}){
     need();
     {const prob=TonicaoAuth.passwordProblem?TonicaoAuth.passwordProblem(password):"";if(prob)throw new Error(prob)}
@@ -216,7 +243,7 @@ const TonicaoRemoteAuth=(()=>{
   async function savePushSubscription(){return {ok:false}}
   async function removePushSubscription(){return {ok:false}}
 
-  return {login,firstSetup,googleSignIn,googleRedirectResult,sendPasswordReset,me,logout,listRemoteUsers,approveGoogleUser,createRemoteUser,updateRemoteUser,resetRemotePassword,remotePermissions,
+  return {login,selfSignUp,firstSetup,googleSignIn,googleRedirectResult,sendPasswordReset,me,logout,listRemoteUsers,approveGoogleUser,createRemoteUser,updateRemoteUser,resetRemotePassword,remotePermissions,
     createRegistrationInvite,getRegistrationInvite,completeRegistrationInvite,submitRegistrationRequest,listRegistrationRequests,decideRegistrationRequest,deleteRegistrationInvite,
     getAcademyAccess,setAcademyAccess,googleConfig,googleLogin,bootstrap,listRemoteNotifications,markRemoteNotificationsRead,pushConfig,savePushSubscription,removePushSubscription};
 })();
