@@ -414,7 +414,7 @@ async function buildCompletionLink(request){
 async function inviteMessageForRequest(request){
   const settings=await getSettings(),link=await buildCompletionLink(request);
   const academy=settings.academyName||settings.academy||"academia";
-  /* v0.60: a mensagem virou um passo a passo. Era só um link solto, e a pessoa
+  /* v0.61: a mensagem virou um passo a passo. Era só um link solto, e a pessoa
      não sabia o que ia encontrar, nem que precisava instalar, nem a regra da senha. */
   const primeiro=String(request.name||"").split(" ")[0];
   const text=
@@ -641,7 +641,7 @@ async function submitStudentRegistration(){
   if(track==="kids"&&(!guardianName||!guardianPhone)){toast("Para Kids, informe nome e telefone do responsável.");return}
   const consentAt=new Date().toISOString(),settings=await getSettings();
   const req={id:uid("reg"),academyId:settings.academyId||currentAcademyIdV027(),name,phone,email,birth,graduationTrack:track,guardianName,guardianPhone,note:document.getElementById("srNote").value.trim(),privacyConsentAt:consentAt,guardianConsentAt:track==="kids"?consentAt:"",status:"pending",source:"self",createdAt:new Date().toISOString()};
-  /* v0.60: a conta do aluno nasce aqui, com a senha que ele mesmo escolheu.
+  /* v0.61: a conta do aluno nasce aqui, com a senha que ele mesmo escolheu.
      Ela fica aguardando liberação até o Professor aprovar o cadastro. */
   if(window.TonicaoFirebase?.configured&&navigator.onLine){
     try{await TonicaoRemoteAuth.selfSignUp({name,email,password:senha})}
@@ -682,7 +682,7 @@ async function approveRegistrationRequest(requestId){
   try{if(r.remoteId)await TonicaoRemoteAuth.decideRegistrationRequest({requestId:r.remoteId,status:"approved",studentId:student.id})}catch(e){}
   await TonicaoAuth.audit("student.request.approve","Cadastro de aluno confirmado pelo Professor",student.id,{requestId});
   await createTargetedNotification("student_approved","Cadastro aprovado","Seu cadastro foi confirmado pelo Professor.",{targetStudentId:student.id,refId:r.id});
-  /* v0.60: se a pessoa criou a conta no próprio cadastro, aprovar o cadastro
+  /* v0.61: se a pessoa criou a conta no próprio cadastro, aprovar o cadastro
      também libera o acesso dela. Sem isto ficaria aguardando liberação para sempre. */
   let ligou=false;
   if(student.email&&window.TonicaoFirebase?.configured){
@@ -1366,7 +1366,7 @@ async function savePlanEditor(planId=""){
   closeModal();toast("Plano de graduação salvo.");renderGraduation()
 }
 
-// v0.60: quantidade separada do nome, com − e +.
+// v0.61: quantidade separada do nome, com − e +.
 function splitReq(text){
   const m=String(text||"").trim().match(/^(\d+)\s+(.*)$/);
   if(!m)return {qty:1,name:String(text||"").trim()};
@@ -2621,7 +2621,7 @@ async function renderAuthGate(){
 
   const gate=document.getElementById("authGate"),host=document.getElementById("authGateContent");
   if(window.TonicaoFirebase?.configured)return await renderCloudAuthGate(gate,host);
-  /* v0.60: esta instalação usa servidor (window.TONICAO_FIREBASE existe), mas o
+  /* v0.61: esta instalação usa servidor (window.TONICAO_FIREBASE existe), mas o
      programa do Firebase não carregou — em geral internet ruim no primeiro acesso.
      NUNCA cair na criação de Dono local aqui: isso criaria uma conta solta, presa
      a este aparelho e sem ligação com a academia. */
@@ -2676,7 +2676,7 @@ async function updateAccountButton(){
   btn.style.display=me?"inline-flex":"none";btn.style.alignItems="center";btn.style.justifyContent="center";
   if(me)btn.title=`${me.name||"Minha conta"} — trocar de conta`;
 }
-/* v0.60: o link de primeira configuração sai da tela de entrada.
+/* v0.61: o link de primeira configuração sai da tela de entrada.
    A academia já tem Dono: ele entra com e-mail e senha e o app reconhece que é o Administrador.
    Para montar outra unidade, abrir o app com ?setup=1 no fim do endereço. */
 function showFirstSetupLink(){
@@ -2706,7 +2706,7 @@ async function renderCloudAuthGate(gate,host){
   setTimeout(()=>TonicaoGoogle.renderButton("googleLoginArea"),30);
   return false;
 }
-/* v0.60: lembra quais contas já entraram NESTE aparelho, só para preencher o
+/* v0.61: lembra quais contas já entraram NESTE aparelho, só para preencher o
    e-mail com um toque. Senha nunca é guardada — essa fica com o celular. */
 const PAPEL_CURTO={admin:"Dono",professor:"Professor",aluno:"Aluno"};
 function lerContasV059(){
@@ -2864,12 +2864,12 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.60`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.61`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
-// v0.60: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
+// v0.61: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
 let syncRedrawPending=false,syncRedrawTimer=null,lastTouchAt=0;
 for(const ev of ["pointerdown","touchstart","keydown","scroll","wheel"])
   window.addEventListener(ev,()=>{lastTouchAt=Date.now()},{passive:true,capture:true});
@@ -2893,7 +2893,7 @@ function restoreViewState(st){
   st.abertos.forEach((aberto,i)=>{if(aberto&&ds[i])ds[i].open=true});
   if(st.y>0)window.scrollTo(0,st.y);
 }
-/* v0.60: diário dos redesenhos. Serve para descobrir o que anda redesenhando
+/* v0.61: diário dos redesenhos. Serve para descobrir o que anda redesenhando
    a tela sozinho: fica visível em Mais → Sincronização. */
 window.__redrawLog=[];
 function anotarRedesenho(causa,alvo){

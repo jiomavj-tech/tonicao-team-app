@@ -375,7 +375,7 @@ body.auth-locked,body.install-locked{overflow:hidden}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.60</p>
+        <p id="topSubtitle">Piloto offline-first • v0.61</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -2175,7 +2175,7 @@ async function buildCompletionLink(request){
 async function inviteMessageForRequest(request){
   const settings=await getSettings(),link=await buildCompletionLink(request);
   const academy=settings.academyName||settings.academy||"academia";
-  /* v0.60: a mensagem virou um passo a passo. Era só um link solto, e a pessoa
+  /* v0.61: a mensagem virou um passo a passo. Era só um link solto, e a pessoa
      não sabia o que ia encontrar, nem que precisava instalar, nem a regra da senha. */
   const primeiro=String(request.name||"").split(" ")[0];
   const text=
@@ -2402,7 +2402,7 @@ async function submitStudentRegistration(){
   if(track==="kids"&&(!guardianName||!guardianPhone)){toast("Para Kids, informe nome e telefone do responsável.");return}
   const consentAt=new Date().toISOString(),settings=await getSettings();
   const req={id:uid("reg"),academyId:settings.academyId||currentAcademyIdV027(),name,phone,email,birth,graduationTrack:track,guardianName,guardianPhone,note:document.getElementById("srNote").value.trim(),privacyConsentAt:consentAt,guardianConsentAt:track==="kids"?consentAt:"",status:"pending",source:"self",createdAt:new Date().toISOString()};
-  /* v0.60: a conta do aluno nasce aqui, com a senha que ele mesmo escolheu.
+  /* v0.61: a conta do aluno nasce aqui, com a senha que ele mesmo escolheu.
      Ela fica aguardando liberação até o Professor aprovar o cadastro. */
   if(window.TonicaoFirebase?.configured&&navigator.onLine){
     try{await TonicaoRemoteAuth.selfSignUp({name,email,password:senha})}
@@ -2443,7 +2443,7 @@ async function approveRegistrationRequest(requestId){
   try{if(r.remoteId)await TonicaoRemoteAuth.decideRegistrationRequest({requestId:r.remoteId,status:"approved",studentId:student.id})}catch(e){}
   await TonicaoAuth.audit("student.request.approve","Cadastro de aluno confirmado pelo Professor",student.id,{requestId});
   await createTargetedNotification("student_approved","Cadastro aprovado","Seu cadastro foi confirmado pelo Professor.",{targetStudentId:student.id,refId:r.id});
-  /* v0.60: se a pessoa criou a conta no próprio cadastro, aprovar o cadastro
+  /* v0.61: se a pessoa criou a conta no próprio cadastro, aprovar o cadastro
      também libera o acesso dela. Sem isto ficaria aguardando liberação para sempre. */
   let ligou=false;
   if(student.email&&window.TonicaoFirebase?.configured){
@@ -3127,7 +3127,7 @@ async function savePlanEditor(planId=""){
   closeModal();toast("Plano de graduação salvo.");renderGraduation()
 }
 
-// v0.60: quantidade separada do nome, com − e +.
+// v0.61: quantidade separada do nome, com − e +.
 function splitReq(text){
   const m=String(text||"").trim().match(/^(\d+)\s+(.*)$/);
   if(!m)return {qty:1,name:String(text||"").trim()};
@@ -4382,7 +4382,7 @@ async function renderAuthGate(){
 
   const gate=document.getElementById("authGate"),host=document.getElementById("authGateContent");
   if(window.TonicaoFirebase?.configured)return await renderCloudAuthGate(gate,host);
-  /* v0.60: esta instalação usa servidor (window.TONICAO_FIREBASE existe), mas o
+  /* v0.61: esta instalação usa servidor (window.TONICAO_FIREBASE existe), mas o
      programa do Firebase não carregou — em geral internet ruim no primeiro acesso.
      NUNCA cair na criação de Dono local aqui: isso criaria uma conta solta, presa
      a este aparelho e sem ligação com a academia. */
@@ -4437,7 +4437,7 @@ async function updateAccountButton(){
   btn.style.display=me?"inline-flex":"none";btn.style.alignItems="center";btn.style.justifyContent="center";
   if(me)btn.title=`${me.name||"Minha conta"} — trocar de conta`;
 }
-/* v0.60: o link de primeira configuração sai da tela de entrada.
+/* v0.61: o link de primeira configuração sai da tela de entrada.
    A academia já tem Dono: ele entra com e-mail e senha e o app reconhece que é o Administrador.
    Para montar outra unidade, abrir o app com ?setup=1 no fim do endereço. */
 function showFirstSetupLink(){
@@ -4467,7 +4467,7 @@ async function renderCloudAuthGate(gate,host){
   setTimeout(()=>TonicaoGoogle.renderButton("googleLoginArea"),30);
   return false;
 }
-/* v0.60: lembra quais contas já entraram NESTE aparelho, só para preencher o
+/* v0.61: lembra quais contas já entraram NESTE aparelho, só para preencher o
    e-mail com um toque. Senha nunca é guardada — essa fica com o celular. */
 const PAPEL_CURTO={admin:"Dono",professor:"Professor",aluno:"Aluno"};
 function lerContasV059(){
@@ -4625,12 +4625,12 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.60`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.61`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
-// v0.60: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
+// v0.61: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
 let syncRedrawPending=false,syncRedrawTimer=null,lastTouchAt=0;
 for(const ev of ["pointerdown","touchstart","keydown","scroll","wheel"])
   window.addEventListener(ev,()=>{lastTouchAt=Date.now()},{passive:true,capture:true});
@@ -4654,7 +4654,7 @@ function restoreViewState(st){
   st.abertos.forEach((aberto,i)=>{if(aberto&&ds[i])ds[i].open=true});
   if(st.y>0)window.scrollTo(0,st.y);
 }
-/* v0.60: diário dos redesenhos. Serve para descobrir o que anda redesenhando
+/* v0.61: diário dos redesenhos. Serve para descobrir o que anda redesenhando
    a tela sozinho: fica visível em Mais → Sincronização. */
 window.__redrawLog=[];
 function anotarRedesenho(causa,alvo){
@@ -6221,6 +6221,121 @@ window.addEventListener("load",()=>setTimeout(async()=>{
               <div class="meta" style="flex:1"><strong>${esc(s.name)}</strong><span class="small muted">${esc(s.belt||"")} • ${esc(s.phone||"sem telefone")}${s.createdAt?` • criado em ${new Date(s.createdAt).toLocaleDateString("pt-BR")}`:""}</span></div>
               <button class="mini-btn" onclick="studentDetails('${esc(s.id)}')">Abrir</button></div>`).join("")}</div></div>`).join("")}`;
         host.insertBefore(box,host.firstChild);
+      }catch(e){}
+      return r;
+    };
+  }
+})();
+</script>
+<script>/* ===== photo-watermark.js ===== */
+/* v0.61 — Marca d'água nas fotos dos alunos.
+   Print não dá para bloquear em aplicativo de navegador: isso não existe na web,
+   e quem vê a tela sempre pode fotografar com outro celular. O que dá para fazer
+   é deixar a cópia rastreável — a foto sai com o nome de quem estava vendo e a
+   data — e cortar o caminho fácil de salvar segurando o dedo.
+   O Administrador liga e desliga em Mais → Configurar academia. */
+(()=>{
+  "use strict";
+  const CSS=`
+  .wm-wrap{position:relative;display:inline-block;line-height:0;max-width:100%}
+  .wm-wrap>img{display:block;max-width:100%}
+  .wm-wrap::after{
+    content:attr(data-wm);
+    position:absolute;inset:0;pointer-events:none;
+    display:flex;align-items:center;justify-content:center;
+    text-align:center;white-space:pre-line;line-height:1.35;
+    font-family:system-ui,-apple-system,sans-serif;font-weight:700;
+    font-size:clamp(9px,3.2vw,13px);letter-spacing:.02em;
+    color:rgba(255,255,255,.72);
+    text-shadow:0 1px 2px rgba(0,0,0,.65);
+    background:linear-gradient(transparent 38%,rgba(0,0,0,.28) 100%);
+    transform:rotate(-16deg);
+  }
+  /* a foto deixa de oferecer "Salvar imagem" ao segurar o dedo */
+  .wm-wrap,.wm-wrap>img{
+    -webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-user-drag:none;
+  }`;
+  const st=document.createElement("style");st.textContent=CSS;document.head.appendChild(st);
+
+  let ligada=true,quem="";
+  async function carregar(){
+    try{
+      const s=await getSettings();
+      ligada=s.photoWatermark!==false;                  // ligada por padrão
+      const u=await TonicaoAuth.currentUser();
+      quem=u?.name||u?.email||"";
+    }catch(e){}
+  }
+  carregar();
+  window.addEventListener("tonicao:data-synced",()=>carregar());
+  window.recarregarMarcaV061=carregar;
+
+  function texto(){
+    const data=new Date().toLocaleDateString("pt-BR");
+    const nome=String(quem||"").split(" ").slice(0,2).join(" ");
+    return `Tonicão Team\n${nome}${nome?" · ":""}${data}\nuso interno`;
+  }
+
+  /* Envolve uma <img> com a marca, sem mexer no resto da tela */
+  function marcar(img){
+    if(!ligada||!img||img.dataset.wmOn)return;
+    if(!img.closest(".student-row,.hero-row,#modalContent"))return;   // só foto de pessoa
+    const w=img.naturalWidth||img.width||0,h=img.height||0;
+    if((img.clientWidth||0)<70&&(img.clientHeight||0)<70)return;       // avatar pequeno não leva marca
+    img.dataset.wmOn="1";
+    const wrap=document.createElement("span");
+    wrap.className="wm-wrap";wrap.dataset.wm=texto();
+    img.parentNode.insertBefore(wrap,img);wrap.appendChild(img);
+  }
+  function varrer(raiz){
+    if(!ligada)return;
+    try{(raiz||document).querySelectorAll?.("img").forEach(marcar)}catch(e){}
+  }
+  new MutationObserver(ms=>{
+    if(!ligada)return;
+    for(const m of ms)for(const n of m.addedNodes){
+      if(n.nodeType!==1)continue;
+      if(n.tagName==="IMG")marcar(n);else varrer(n);
+    }
+  }).observe(document.documentElement,{childList:true,subtree:true});
+  setTimeout(()=>varrer(),1200);
+
+  /* Interruptor na tela do Administrador */
+  window.alternarMarcaV061=async function(valor){
+    if(!(await guard("manage_branding").catch(()=>true)))return;
+    const s=await getSettings();s.photoWatermark=!!valor;await DB.put("settings",s);
+    ligada=!!valor;
+    if(!ligada){
+      document.querySelectorAll(".wm-wrap").forEach(w=>{
+        const img=w.querySelector("img");if(!img)return;
+        delete img.dataset.wmOn;w.parentNode.insertBefore(img,w);w.remove();
+      });
+    }else varrer();
+    toast(ligada?"Marca d'água ligada.":"Marca d'água desligada.");
+  };
+
+  const baseMore=window.renderMore;
+  if(typeof baseMore==="function"){
+    window.renderMore=async function(mode,...a){
+      const r=await baseMore.call(this,mode,...a);
+      try{
+        if(mode!=="academy")return r;
+        const host=document.getElementById("more");
+        if(!host||host.querySelector("[data-wm-cfg]"))return r;
+        const s=await getSettings();
+        const on=s.photoWatermark!==false;
+        const box=document.createElement("div");
+        box.dataset.wmCfg="1";box.className="card";
+        box.innerHTML=`<h3>Fotos dos alunos</h3>
+          <div class="field"><label>Marca d'água nas fotos</label>
+            <select id="cfgWm" onchange="alternarMarcaV061(this.value==='1')">
+              <option value="1" ${on?"selected":""}>Ligada</option>
+              <option value="0" ${on?"":"selected"}>Desligada</option>
+            </select></div>
+          <p class="small muted">Com ela ligada, a foto aparece com o nome de quem está vendo e a data por cima, e segurar o dedo deixa de oferecer "Salvar imagem".</p>
+          <div class="notice payment small"><strong>Isto não impede print</strong>
+            <div class="small">Nenhum aplicativo aberto pelo navegador consegue bloquear a captura de tela, e quem vê a tela sempre pode fotografar com outro celular. A marca serve para a cópia ficar rastreável e sem graça de repassar.</div></div>`;
+        host.appendChild(box);
       }catch(e){}
       return r;
     };
