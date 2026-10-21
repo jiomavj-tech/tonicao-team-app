@@ -118,6 +118,16 @@
     const nameOf=id=>students.find(s=>s.id===id)?.name||"sem ficha";
     const pending=users.filter(u=>u.active===false&&u.role!=="admin");
     const alunos=users.filter(u=>u.active!==false&&u.role==="aluno");
+    /* v0.57: alunos com ficha e sem conta nenhuma — o "limbo" */
+    const comConta=new Set(users.filter(u=>u.studentId).map(u=>u.studentId));
+    const semAcesso=students.filter(s=>s.active!==false&&!comConta.has(s.id)&&s.phone);
+    const limbo=semAcesso.length?`<div class="section-title" style="margin-top:12px"><h2>⚠️ Sem acesso ao aplicativo</h2><span class="pill amber">${semAcesso.length}</span></div>
+      <p class="small muted">Têm ficha e treinam normalmente, mas não conseguem entrar no aplicativo. Crie o acesso ou deixe assim, se eles não forem usar.</p>
+      <div class="list">${semAcesso.slice(0,20).map(s=>`<div class="list-item" style="cursor:default"><div class="icon">🔓</div>
+        <div class="meta" style="flex:1"><strong>${esc(s.name)}</strong><span class="small muted">${esc(s.email||"sem e-mail no cadastro")}</span></div>
+        <button class="btn primary" onclick="newStudentAccountV035('${esc(s.id)}')">Criar acesso</button></div>`).join("")}</div>
+      ${semAcesso.length>20?`<p class="small muted">e mais ${semAcesso.length-20}…</p>`:""}`:"";
+
     const corpo=`<button class="btn primary full" style="margin:10px 0" onclick="newStudentAccountV035()">➕ Criar acesso com e-mail e senha</button>
       ${pending.length?`<div class="list">${pending.map(u=>`<div class="list-item" style="cursor:default"><div class="icon">⏳</div>
         <div class="meta" style="flex:1"><strong>${esc(u.name||"Sem nome")}</strong><span class="small muted">${esc(u.email||"")} • aguardando liberação</span></div>
@@ -129,7 +139,8 @@
           <button class="mini-btn" onclick="resetStudentPasswordV035('${esc(u.id)}')">🔑 Senha</button>
           <button class="mini-btn" onclick="linkStudentAccountV034('${esc(u.id)}')">Ficha</button>
           <button class="mini-btn" onclick="blockStudentAccountV034('${esc(u.id)}')">Bloquear</button></div>`).join("")}</div></details>`:""}`;
-    if(destaque)return `<div class="section-title"><h2>🔐 Aguardando liberação de acesso</h2><span class="pill amber">${pending.length}</span></div>${corpo}`;
+    if(destaque)return `<div class="section-title"><h2>🔐 Aguardando liberação de acesso</h2><span class="pill amber">${pending.length}</span></div>${corpo}${limbo}`;
+    if(semAcesso.length)return `<details style="margin-top:14px" open><summary style="cursor:pointer;font-weight:700">🔐 Contas de acesso dos alunos</summary>${corpo}${limbo}</details>`;
     return `<details style="margin-top:14px"><summary style="cursor:pointer;font-weight:700">🔐 Contas de acesso dos alunos</summary>${corpo}</details>`;
   }
 
