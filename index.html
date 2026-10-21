@@ -375,7 +375,7 @@ body.auth-locked,body.install-locked{overflow:hidden}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.61</p>
+        <p id="topSubtitle">Piloto offline-first • v0.62</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -2151,9 +2151,34 @@ async function buildInviteShareData(student){
   const base=await getPublicAppUrl();
   const link=base?tenantUrlV027(base,{invite:token}):"";
   const academy=settings.academyName||settings.academy||"academia";
-  const text=`Olá, ${student.name}! Você foi cadastrado na ${academy}. ${link?`Acesse o aplicativo: ${link}`:`Use o convite abaixo no aplicativo:`}${link?"":`\n\n${token}`}`;
+  const primeiro=String(student.name||"").split(" ")[0];
+  const temEmail=!!student.email;
+  /* v0.62: era uma linha só. Agora diz o que fazer, com o endereço e a senha. */
+  const text=link?
+`Olá, ${primeiro}! 🥋 Seu cadastro na ${academy} está pronto. Falta só você entrar no aplicativo.
+
+*1. Abra o link*
+${link}
+
+*2. Entre com o seu acesso*
+${temEmail?`E-mail: ${student.email}\nA senha é a que você criou no cadastro. Se não lembrar, toque em "Esqueci a senha".`:`Use o e-mail e a senha que combinamos. Se não lembrar a senha, toque em "Esqueci a senha" na tela de entrada.`}
+
+*3. Instale no celular*
+Depois de entrar, o próprio aplicativo mostra como. Fica com ícone próprio e abre em tela cheia.
+
+Aí é só usar: presença pelo QR no começo da aula, sua faixa, seus treinos e os avisos da academia. Oss! 👊`
+: `Olá, ${primeiro}! Use o convite abaixo no aplicativo da ${academy}:\n\n${token}`;
   return {token,link,text}
 }
+window.copiarConviteV062=async function(studentId){
+  const st=await DB.getOne("students",studentId);if(!st)return;
+  const d=await buildInviteShareData(st);
+  try{await navigator.clipboard.writeText(d.text);toast("Recado copiado. Cole no WhatsApp.")}
+  catch(e){
+    const t=document.getElementById("quickInviteLink");
+    if(t){t.select?.();toast("Copie o texto da caixa abaixo.")}else toast("Não foi possível copiar.");
+  }
+};
 async function shareStudentInvite(studentId){
   const student=await DB.getOne("students",studentId);if(!student)return;
   const data=await buildInviteShareData(student);
@@ -2175,7 +2200,7 @@ async function buildCompletionLink(request){
 async function inviteMessageForRequest(request){
   const settings=await getSettings(),link=await buildCompletionLink(request);
   const academy=settings.academyName||settings.academy||"academia";
-  /* v0.61: a mensagem virou um passo a passo. Era só um link solto, e a pessoa
+  /* v0.62: a mensagem virou um passo a passo. Era só um link solto, e a pessoa
      não sabia o que ia encontrar, nem que precisava instalar, nem a regra da senha. */
   const primeiro=String(request.name||"").split(" ")[0];
   const text=
@@ -2402,7 +2427,7 @@ async function submitStudentRegistration(){
   if(track==="kids"&&(!guardianName||!guardianPhone)){toast("Para Kids, informe nome e telefone do responsável.");return}
   const consentAt=new Date().toISOString(),settings=await getSettings();
   const req={id:uid("reg"),academyId:settings.academyId||currentAcademyIdV027(),name,phone,email,birth,graduationTrack:track,guardianName,guardianPhone,note:document.getElementById("srNote").value.trim(),privacyConsentAt:consentAt,guardianConsentAt:track==="kids"?consentAt:"",status:"pending",source:"self",createdAt:new Date().toISOString()};
-  /* v0.61: a conta do aluno nasce aqui, com a senha que ele mesmo escolheu.
+  /* v0.62: a conta do aluno nasce aqui, com a senha que ele mesmo escolheu.
      Ela fica aguardando liberação até o Professor aprovar o cadastro. */
   if(window.TonicaoFirebase?.configured&&navigator.onLine){
     try{await TonicaoRemoteAuth.selfSignUp({name,email,password:senha})}
@@ -2443,7 +2468,7 @@ async function approveRegistrationRequest(requestId){
   try{if(r.remoteId)await TonicaoRemoteAuth.decideRegistrationRequest({requestId:r.remoteId,status:"approved",studentId:student.id})}catch(e){}
   await TonicaoAuth.audit("student.request.approve","Cadastro de aluno confirmado pelo Professor",student.id,{requestId});
   await createTargetedNotification("student_approved","Cadastro aprovado","Seu cadastro foi confirmado pelo Professor.",{targetStudentId:student.id,refId:r.id});
-  /* v0.61: se a pessoa criou a conta no próprio cadastro, aprovar o cadastro
+  /* v0.62: se a pessoa criou a conta no próprio cadastro, aprovar o cadastro
      também libera o acesso dela. Sem isto ficaria aguardando liberação para sempre. */
   let ligou=false;
   if(student.email&&window.TonicaoFirebase?.configured){
@@ -3127,7 +3152,7 @@ async function savePlanEditor(planId=""){
   closeModal();toast("Plano de graduação salvo.");renderGraduation()
 }
 
-// v0.61: quantidade separada do nome, com − e +.
+// v0.62: quantidade separada do nome, com − e +.
 function splitReq(text){
   const m=String(text||"").trim().match(/^(\d+)\s+(.*)$/);
   if(!m)return {qty:1,name:String(text||"").trim()};
@@ -3817,12 +3842,23 @@ async function scanInviteQr(){
 
 async function quickInvite(id){
   const student=await DB.getOne("students",id),data=await buildInviteShareData(student);
-  showModal(`<h3>Convidar ${student.name}</h3><div id="quickInviteQr" class="qr-box"></div>
-  <div class="field"><label>Telefone / WhatsApp</label><input value="${student.phone||""}" readonly></div>
-  <div class="field"><label>Link do aplicativo</label><textarea id="quickInviteLink" readonly>${data.link||"Configure o link público no Administrador/Dono."}</textarea></div>
-  <div class="field"><label>Convite técnico</label><textarea id="quickInviteToken" readonly>${data.token}</textarea></div>
-  <div class="actions"><button class="btn primary" onclick="shareStudentInvite('${student.id}')">📲 Enviar convite</button><button class="btn secondary" onclick="navigator.clipboard?.writeText(document.getElementById('quickInviteLink').value);toast('Link copiado')">Copiar link</button></div>
-  <p class="small muted">No celular, “Enviar convite” usa o compartilhamento do aparelho ou abre o WhatsApp quando houver telefone cadastrado.</p>`);
+  const zap=phoneForWhatsApp(student.phone||"");
+  showModal(`<h3>Convidar ${esc(student.name)}</h3>
+  <p class="small muted">Manda o recado pronto, com o endereço do aplicativo e o que ele precisa fazer.</p>
+  ${zap?`<a class="btn green full" style="display:block;text-align:center;text-decoration:none;margin-top:12px"
+      href="https://wa.me/${esc(zap)}?text=${encodeURIComponent(data.text)}" target="_blank" rel="noopener">💬 Enviar pelo WhatsApp</a>`:
+    `<div class="notice payment small">Este aluno não tem telefone cadastrado. Use "Copiar recado" e cole onde quiser.</div>`}
+  <button class="btn secondary full" style="margin-top:8px" onclick="copiarConviteV062('${esc(student.id)}')">📋 Copiar recado</button>
+  <div class="section-title" style="margin-top:18px"><h2>Ou mostre este QR</h2></div>
+  <p class="small muted">Ele aponta a câmera e o aplicativo abre no celular dele.</p>
+  <div id="quickInviteQr" class="qr-box"></div>
+  <details style="margin-top:14px"><summary style="cursor:pointer;font-weight:700">Endereço e convite técnico</summary>
+    <div class="field" style="margin-top:8px"><label>Link do aplicativo</label><textarea id="quickInviteLink" readonly>${esc(data.link||"Configure o link público no Administrador/Dono.")}</textarea></div>
+    <div class="field"><label>Convite técnico</label><textarea id="quickInviteToken" readonly>${esc(data.token)}</textarea>
+      <p class="small muted" style="margin-top:6px">Só serve para vincular o aparelho sem internet. No uso normal o aluno entra com e-mail e senha.</p></div>
+  </details>
+  <div class="actions" style="margin-top:14px"><button class="btn secondary" onclick="shareStudentInvite('${student.id}')">📲 Outros aplicativos</button><button class="btn secondary" onclick="navigator.clipboard?.writeText(document.getElementById('quickInviteLink').value);toast('Link copiado')">Copiar link</button></div>
+  <p class="small muted">“Outros aplicativos” abre o compartilhamento do celular, para mandar por e-mail, Telegram ou o que preferir.</p>`);
   setTimeout(()=>{const box=document.getElementById("quickInviteQr");if(box&&window.QRCode){box.innerHTML="";new QRCode(box,{text:data.link||data.token,width:220,height:220,correctLevel:QRCode.CorrectLevel.M})}},50);
 }
 
@@ -4382,7 +4418,7 @@ async function renderAuthGate(){
 
   const gate=document.getElementById("authGate"),host=document.getElementById("authGateContent");
   if(window.TonicaoFirebase?.configured)return await renderCloudAuthGate(gate,host);
-  /* v0.61: esta instalação usa servidor (window.TONICAO_FIREBASE existe), mas o
+  /* v0.62: esta instalação usa servidor (window.TONICAO_FIREBASE existe), mas o
      programa do Firebase não carregou — em geral internet ruim no primeiro acesso.
      NUNCA cair na criação de Dono local aqui: isso criaria uma conta solta, presa
      a este aparelho e sem ligação com a academia. */
@@ -4437,7 +4473,7 @@ async function updateAccountButton(){
   btn.style.display=me?"inline-flex":"none";btn.style.alignItems="center";btn.style.justifyContent="center";
   if(me)btn.title=`${me.name||"Minha conta"} — trocar de conta`;
 }
-/* v0.61: o link de primeira configuração sai da tela de entrada.
+/* v0.62: o link de primeira configuração sai da tela de entrada.
    A academia já tem Dono: ele entra com e-mail e senha e o app reconhece que é o Administrador.
    Para montar outra unidade, abrir o app com ?setup=1 no fim do endereço. */
 function showFirstSetupLink(){
@@ -4467,7 +4503,7 @@ async function renderCloudAuthGate(gate,host){
   setTimeout(()=>TonicaoGoogle.renderButton("googleLoginArea"),30);
   return false;
 }
-/* v0.61: lembra quais contas já entraram NESTE aparelho, só para preencher o
+/* v0.62: lembra quais contas já entraram NESTE aparelho, só para preencher o
    e-mail com um toque. Senha nunca é guardada — essa fica com o celular. */
 const PAPEL_CURTO={admin:"Dono",professor:"Professor",aluno:"Aluno"};
 function lerContasV059(){
@@ -4625,12 +4661,12 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.61`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.62`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
 
-// v0.61: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
+// v0.62: só redesenha a tela quando a pessoa não está mexendo, e sem perder o lugar.
 let syncRedrawPending=false,syncRedrawTimer=null,lastTouchAt=0;
 for(const ev of ["pointerdown","touchstart","keydown","scroll","wheel"])
   window.addEventListener(ev,()=>{lastTouchAt=Date.now()},{passive:true,capture:true});
@@ -4654,7 +4690,7 @@ function restoreViewState(st){
   st.abertos.forEach((aberto,i)=>{if(aberto&&ds[i])ds[i].open=true});
   if(st.y>0)window.scrollTo(0,st.y);
 }
-/* v0.61: diário dos redesenhos. Serve para descobrir o que anda redesenhando
+/* v0.62: diário dos redesenhos. Serve para descobrir o que anda redesenhando
    a tela sozinho: fica visível em Mais → Sincronização. */
 window.__redrawLog=[];
 function anotarRedesenho(causa,alvo){
