@@ -114,6 +114,32 @@
     }catch(e){toast(e.message||"Não foi possível enviar.")}
   };
 
+  /* v0.59: o Dono não consegue agir como Professor só mudando a tela — as regras
+     do servidor liberam alunos e presença por papel. Então o caminho é entrar
+     com uma conta de Professor de verdade. Este botão prepara essa troca. */
+  window.trocarParaProfessorV059=async function(){
+    let profs=[];
+    try{profs=(DB.clean(await TonicaoRemoteAuth.listRemoteUsers()).users||[]).filter(u=>u.role==="professor"&&u.active!==false)}catch(e){}
+    const meu=(await getSettings()).remoteUser?.email||"";
+    showModal(`<h3>🔄 Testar como Professor</h3>
+      <p class="small muted">Para marcar presença, cadastrar e graduar, o servidor exige uma conta de Professor. A sua é de Dono, e ela continua existindo — você só troca de conta e volta quando quiser.</p>
+      ${profs.length?`<div class="section-title"><h2>Contas de professor</h2></div>
+        <div class="list">${profs.map(u=>`<div class="list-item" style="cursor:default">
+          <div class="icon">🥋</div><div class="meta" style="flex:1"><strong>${esc(u.name||u.email)}</strong><span class="small muted">${esc(u.email||"")}</span></div>
+          <button class="btn primary" onclick="sairParaContaV059('${esc(u.email||"")}')">Entrar</button></div>`).join("")}</div>`
+        :`<div class="notice payment small">Nenhuma conta de professor cadastrada ainda.</div>`}
+      <div class="notice small" style="margin-top:14px"><strong>Quer uma conta de professor só sua, para testar?</strong>
+        <div class="small">Crie com um e-mail diferente. Se o seu for do Gmail, dá para usar o mesmo e-mail com um apelido: <b>${esc((meu||"voce@gmail.com").replace("@","+prof@"))}</b> — as mensagens caem na sua caixa de sempre, mas para o aplicativo é outro e-mail.</div></div>
+      <button class="btn primary full" style="margin-top:10px" onclick="closeModal();novoProfessorV047()">🥋 Criar conta de professor</button>
+      <button class="btn secondary full" style="margin-top:8px" onclick="closeModal()">Fechar</button>
+      <p class="small muted" style="margin-top:12px;text-align:center">Quando terminar os testes, bloqueie essa conta em Contas do app. Nada se perde.</p>`);
+  };
+  window.sairParaContaV059=async function(email){
+    try{if(email)sessionStorage.setItem("tonicao_prefill_email",email)}catch(e){}
+    closeModal();
+    await logoutAuth({switchAccount:true});
+  };
+
   const baseHome=window.renderProfessorHome;
   window.renderProfessorHome=async function(...a){
     const r=await baseHome.apply(this,a);
@@ -136,6 +162,7 @@
           <button class="op-btn" onclick="abrirNoMaisV047('users')"><span class="op-ico">🔐</span>Contas do app</button>
           <button class="op-btn" onclick="abrirNoMaisV047('academy')"><span class="op-ico">⚙️</span>Dados da academia</button>
           <button class="op-btn" onclick="telaSenhasV047()"><span class="op-ico">🔑</span>Redefinir senha</button>
+          <button class="op-btn wide" onclick="trocarParaProfessorV059()"><span class="op-ico">🔄</span>Testar como Professor</button>
           <button class="op-btn" onclick="abrirNoMaisV047('backup')"><span class="op-ico">💾</span>Backup</button>
         </div>
         <div class="op-nums">
