@@ -18,29 +18,63 @@
     await renderStudents();
   };
 
+  /* v0.64: liberar NÃO rebaixa mais ninguém.
+     Antes, este botão gravava role:"aluno" sem perguntar — liberar a conta de
+     uma professora tirava a aula dela. Agora o papel é escolhido, já vem com o
+     papel atual da conta, e só o Dono pode marcar Professor (é o que as regras
+     do servidor permitem). A ficha virou opcional, porque professor que também
+     treina pode ter ficha e quem só dá aula não tem. */
+  const PAPEL_TXT={admin:"Dono",professor:"Professor",aluno:"Aluno"};
   window.linkStudentAccountV034=async function(userId){
     if(!(await guard("manage_students")))return;
     const users=await remoteUsers(),u=users.find(x=>x.id===userId);if(!u)return;
+    const eu=await TonicaoAuth.currentUser();
+    const souDono=eu?.role==="admin";
+    const papelAtual=u.role||"aluno";
+    if((papelAtual==="professor"||papelAtual==="admin")&&!souDono){
+      showModal(`<h3>🔐 ${esc(u.name||u.email||"Conta")}</h3>
+        <div class="notice payment small"><strong>Só o Dono libera esta conta</strong>
+          <div class="small">Ela está cadastrada como <b>${esc(PAPEL_TXT[papelAtual]||papelAtual)}</b>. Liberar daqui rebaixaria a pessoa para aluno, e o servidor não permite que um professor mude o papel de outro.</div></div>
+        <button class="btn secondary full" style="margin-top:10px" onclick="closeModal()">Fechar</button>`);
+      return;
+    }
     const students=(await getStudents()).filter(s=>s.active!==false).sort((a,b)=>a.name.localeCompare(b.name));
     const taken=new Set(users.filter(x=>x.studentId&&x.id!==userId).map(x=>x.studentId));
     const guess=students.find(s=>s.name.toLowerCase().startsWith(String(u.name||"").toLowerCase().split(" ")[0]));
+    const escolhida=u.studentId||guess?.id||"";
     showModal(`<h3>🔐 Liberar acesso</h3>
       <div class="list-item" style="cursor:default"><div class="icon">${u.picture?`<img src="${esc(u.picture)}" alt="">`:"👤"}</div>
-        <div><strong>${esc(u.name||"Sem nome")}</strong><span class="small muted">${esc(u.email||"")}</span></div></div>
-      <div class="field" style="margin-top:12px"><label>Ficha do aluno</label>
-        <select id="lnkStudent">${students.map(s=>`<option value="${esc(s.id)}" ${guess&&guess.id===s.id?"selected":""}>${esc(s.name)}${taken.has(s.id)?" (já tem outra conta)":""}</option>`).join("")}</select></div>
-      <p class="small muted">A pessoa vai ver apenas a própria ficha, presenças e graduação.</p>
+        <div><strong>${esc(u.name||"Sem nome")}</strong><span class="small muted">${esc(u.email||"")} • hoje: ${esc(PAPEL_TXT[papelAtual]||papelAtual)}</span></div></div>
+      <div class="field" style="margin-top:12px"><label>Entra no aplicativo como</label>
+        <select id="lnkRole" onchange="lnkPapelMudouV064()">
+          <option value="aluno" ${papelAtual==="aluno"?"selected":""}>Aluno — vê só a própria ficha</option>
+          ${souDono?`<option value="professor" ${papelAtual==="professor"?"selected":""}>Professor — dá aula, faz check-in e gradua</option>`:""}
+        </select></div>
+      <div class="field"><label>Ficha do aluno <span class="small muted" id="lnkFichaHint">(obrigatória para aluno)</span></label>
+        <select id="lnkStudent"><option value="">— sem ficha —</option>${students.map(s=>`<option value="${esc(s.id)}" ${escolhida===s.id?"selected":""}>${esc(s.name)}${taken.has(s.id)?" (já tem outra conta)":""}</option>`).join("")}</select></div>
+      <p class="small muted" id="lnkExplica">A pessoa vai ver apenas a própria ficha, presenças e graduação.</p>
       <button class="btn primary full" onclick="saveLinkStudentAccountV034('${esc(userId)}')">Liberar acesso</button>
       <button class="btn secondary full" style="margin-top:8px" onclick="closeModal()">Agora não</button>`);
+    lnkPapelMudouV064();
+  };
+  window.lnkPapelMudouV064=function(){
+    const prof=document.getElementById("lnkRole")?.value==="professor";
+    const hint=document.getElementById("lnkFichaHint"),exp=document.getElementById("lnkExplica");
+    if(hint)hint.textContent=prof?"(opcional — só se ela também treina)":"(obrigatória para aluno)";
+    if(exp)exp.textContent=prof
+      ?"Professor vê a academia inteira. Se ela também treina, escolha a ficha dela: o histórico de aluna fica ligado à mesma conta."
+      :"A pessoa vai ver apenas a própria ficha, presenças e graduação.";
   };
   window.saveLinkStudentAccountV034=async function(userId){
     if(!(await guard("manage_students")))return;
     const studentId=document.getElementById("lnkStudent").value;
-    if(!studentId){toast("Escolha a ficha do aluno.");return}
+    const role=document.getElementById("lnkRole")?.value||"aluno";
+    if(role==="aluno"&&!studentId){toast("Escolha a ficha do aluno.");return}
     try{
-      await TonicaoRemoteAuth.approveGoogleUser({userId,role:"aluno",studentId});
-      const s=await DB.getOne("students",studentId);
-      closeModal();toast(`Acesso liberado para ${s?.name||"o aluno"}. ✅`);
+      await TonicaoRemoteAuth.approveGoogleUser({userId,role,studentId});
+      const s=studentId?await DB.getOne("students",studentId):null;
+      closeModal();
+      toast(role==="professor"?`Acesso de professor liberado. ✅`:`Acesso liberado para ${s?.name||"o aluno"}. ✅`);
       await remoteUsers(true);await renderAll();
     }catch(e){toast(e.message||"Não foi possível liberar.")}
   };
@@ -49,7 +83,8 @@
     const u=(await remoteUsers()).find(x=>x.id===userId);if(!u)return;
     if(!confirm(`Bloquear o acesso de ${u.name||u.email}?\n\nA ficha e o histórico do aluno continuam salvos.`))return;
     try{
-      await TonicaoRemoteAuth.updateRemoteUser({userId,role:"aluno",studentId:u.studentId||"",active:false});
+      /* v0.64: bloquear mantém o papel. Antes gravava "aluno" e rebaixava. */
+      await TonicaoRemoteAuth.updateRemoteUser({userId,role:u.role||"aluno",studentId:u.studentId||"",active:false});
       toast("Acesso bloqueado.");await remoteUsers(true);await renderAll();
     }catch(e){toast(e.message||"Não foi possível bloquear.")}
   };

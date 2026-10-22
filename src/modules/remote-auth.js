@@ -151,7 +151,9 @@ const TonicaoRemoteAuth=(()=>{
   }
   async function updateRemoteUser({userId,role,studentId="",active=true,name=""}){
     need();
-    const patch={role,studentId:role==="aluno"?studentId:"",active:!!active,...F.meta()};
+    /* v0.64: professor que também é aluno mantém a ficha ligada à conta.
+       Antes, qualquer papel diferente de "aluno" apagava o studentId. */
+    const patch={role,studentId:studentId||"",active:!!active,...F.meta()};
     if(name)patch.name=name;
     try{await F.acad().collection("members").doc(userId).update(patch);return {ok:true}}catch(e){throw friendly(e)}
   }
