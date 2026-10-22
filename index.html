@@ -383,7 +383,7 @@ body.auth-locked,body.install-locked{overflow:hidden}
       <img class="brand-logo" src="./assets/logo-tonicao.jpg" alt="Tonicão Team">
       <div class="brand">
         <h1>Tonicão Team Sul da Ilha</h1>
-        <p id="topSubtitle">Piloto offline-first • v0.64</p>
+        <p id="topSubtitle">Piloto offline-first • v0.65</p>
       </div>
       <div class="spacer"></div>
       <button id="accountBtn" onclick="accountMenu()" aria-label="Minha conta" title="Minha conta"
@@ -513,7 +513,7 @@ function cleanValue(value,key=""){
   }
   return value; // Blob, Date, números etc. ficam como estão
 }
-const DB_VERSION = 14; // v0.28: grade de horários e reservas
+const DB_VERSION = 15; // v0.65: foto que o próprio aluno troca
 
 const STORE_DEFS = [
   ["students","id"], ["classSessions","id"], ["attendance","id"],
@@ -522,13 +522,13 @@ const STORE_DEFS = [
   ["techniques","id"], ["notifications","id"], ["paymentStatus","id"],
   ["documents","id"], ["settings","id"], ["academies","id"], ["devices","id"],
   ["invites","id"], ["syncLog","id"], ["academyContent","id"], ["timerPresets","id"],
-  ["sequenceRules","id"], ["syncQueue","id"], ["syncMeta","id"], ["users","id"], ["authSession","id"], ["auditLog","id"], ["academyTimeline","id"], ["academyGallery","id"], ["reportPresets","id"], ["remoteAuth","id"], ["registrationRequests","id"], ["academyRules","id"], ["scoreRules","id"], ["referenceMaterials","id"], ["classSchedule","id"], ["classBookings","id"]
+  ["sequenceRules","id"], ["syncQueue","id"], ["syncMeta","id"], ["users","id"], ["authSession","id"], ["auditLog","id"], ["academyTimeline","id"], ["academyGallery","id"], ["reportPresets","id"], ["remoteAuth","id"], ["registrationRequests","id"], ["academyRules","id"], ["scoreRules","id"], ["referenceMaterials","id"], ["classSchedule","id"], ["classBookings","id"], ["studentPhotos","id"]
 ];
 
 const SYNCABLE_STORES = new Set([
   "students","classSessions","attendance","gradingHistory","gradingPlans",
   "gradingAssignments","gradingReminders","pointsLedger","events","techniques",
-  "notifications","paymentStatus","academyContent","timerPresets","sequenceRules","users","auditLog","academyTimeline","academyGallery","registrationRequests","academyRules","scoreRules","referenceMaterials","classSchedule","classBookings"
+  "notifications","paymentStatus","academyContent","timerPresets","sequenceRules","users","auditLog","academyTimeline","academyGallery","registrationRequests","academyRules","scoreRules","referenceMaterials","classSchedule","classBookings","studentPhotos"
 ]);
 
 let __dbPromise=null;
@@ -1387,7 +1387,7 @@ const TonicaoCloud=(()=>{
   const NEVER_PUSH=new Set(["users","auditLog","registrationRequests","settings"]);
   const SHARED=["techniques","gradingPlans","events","academyContent","academyTimeline","academyGallery","academyRules","scoreRules","referenceMaterials","timerPresets","sequenceRules","classSessions","classSchedule"];
   const STUDENT_OWN=["attendance","gradingHistory","gradingAssignments","gradingReminders","pointsLedger","paymentStatus","classBookings"];
-  const PROF_WRITE=new Set(["students","classSessions","attendance","gradingHistory","gradingPlans","gradingAssignments","gradingReminders","pointsLedger","events","techniques","notifications","paymentStatus","timerPresets","sequenceRules","scoreRules","academyRules","academyContent","academyTimeline","academyGallery","referenceMaterials","classSchedule","classBookings"]);
+  const PROF_WRITE=new Set(["students","classSessions","attendance","gradingHistory","gradingPlans","gradingAssignments","gradingReminders","pointsLedger","events","techniques","notifications","paymentStatus","timerPresets","sequenceRules","scoreRules","academyRules","academyContent","academyTimeline","academyGallery","referenceMaterials","classSchedule","classBookings","studentPhotos"]);
   const ADMIN_WRITE=new Set(["academyContent","academyTimeline","academyGallery","referenceMaterials","notifications"]);
   const INDEX_FIELDS=["studentId","status","sessionId","targetStudentId","targetRole","payment","active"];
   const PUBLIC_STUDENT=["id","name","nickname","belt","stripes","points","graduationTrack","photo","active","updatedAt"];
@@ -1453,7 +1453,7 @@ const TonicaoCloud=(()=>{
     const rejected=[];let pushed=0;
     for(const q of pending){
       const ackId=`${q.id}@${q.queuedAt}`;
-      const allowed=me.role==="professor"?PROF_WRITE.has(q.store):me.role==="admin"?ADMIN_WRITE.has(q.store):["attendance","gradingAssignments","classBookings"].includes(q.store);
+      const allowed=me.role==="professor"?PROF_WRITE.has(q.store):me.role==="admin"?ADMIN_WRITE.has(q.store):["attendance","gradingAssignments","classBookings","studentPhotos"].includes(q.store);
       if(NEVER_PUSH.has(q.store)||!DB.syncableStores.includes(q.store)){await DB.ackChanges([ackId]);continue}
       if(!allowed){await DB.ackChanges([ackId]);await revert(q.store,q.recordId);continue} // volta à versão oficial
       try{
@@ -1462,6 +1462,15 @@ const TonicaoCloud=(()=>{
             // reserva do aluno: cria/cancela só a própria, enquanto pendente
             if(q.op==="delete")await col("classBookings").doc(q.recordId).set({_deleted:true,...F.meta()},{merge:true});
             else{const v=q.value;await col("classBookings").doc(q.recordId).set({id:q.recordId,scheduleId:v.scheduleId,date:v.date,studentId:v.studentId,status:"pending",createdAt:v.createdAt||new Date().toISOString(),...F.meta()})}
+            await DB.ackChanges([ackId]);pushed++;continue;
+          }
+          if(q.store==="studentPhotos"){
+            /* v0.65: a foto do próprio aluno. O documento guarda SÓ a foto, por isso
+               o servidor pode liberar a escrita sem risco: não há faixa, ponto nem
+               pagamento dentro dele para alguém adulterar. */
+            if(q.recordId!==me.studentId)throw {code:"permission-denied"};
+            if(q.op==="delete")await col("studentPhotos").doc(q.recordId).set({id:q.recordId,_deleted:true,...F.meta()});
+            else await col("studentPhotos").doc(q.recordId).set({id:q.recordId,photo:String(q.value?.photo||""),updatedAt:q.value?.updatedAt||new Date().toISOString(),...F.meta()});
             await DB.ackChanges([ackId]);pushed++;continue;
           }
           if(q.op!=="put")throw {code:"permission-denied"};
@@ -1537,6 +1546,7 @@ const TonicaoCloud=(()=>{
     if(me.role==="aluno"){
       const sid=me.studentId;
       for(const st of SHARED)await pullQuery(st,col(st),st,cursors,apply);
+      await pullQuery("studentPhotos",col("studentPhotos"),"studentPhotos",cursors,apply);
       await pullQuery("studentsPublic",col("studentsPublic"),"students",cursors,async ch=>{if(ch.recordId!==sid)await apply(ch)});
       if(sid){
         const own=await col("students").doc(sid).get();
@@ -1590,6 +1600,16 @@ const TonicaoCloud=(()=>{
       const ac=(await F.acad().get()).data()||{};
       const s=await settings();
       if(s.academyAccessStatus!==(ac.accessStatus||"active")||s.academyAccessReason!==(ac.accessReason||""))await saveSettings({academyAccessStatus:ac.accessStatus||"active",academyAccessReason:ac.accessReason||""});
+      /* v0.65: o que o Dono liga aqui precisa chegar no celular de todo mundo.
+         "settings" nunca sobe para o servidor, então estas duas chaves moram no
+         documento da academia e descem a cada sincronização. */
+      {
+        const pf=ac.studentPhotoSelf!==false, wm=ac.photoWatermark!==false;
+        if(s.studentPhotoSelf!==pf||s.photoWatermark!==wm){
+          await saveSettings({studentPhotoSelf:pf,photoWatermark:wm});
+          try{window.dispatchEvent(new CustomEvent("tonicao:policy-changed"))}catch(e){}
+        }
+      }
       if(ac.accessStatus==="blocked"&&me.role!=="admin")return {...me,blocked:true};
     }catch(e){}
     return me;
@@ -1670,7 +1690,16 @@ const TonicaoCloud=(()=>{
       },err=>console.warn("watchSession",err));
     }catch(e){console.warn("watchSession",e);return null}
   }
-  return {getStatus,saveConfig,testConnection,syncNow,schedule,start,confirmPendingAttendance,uploadAll,watchSession};
+  /* v0.65: só o Dono grava — é o que a regra do documento da academia permite. */
+  async function savePolicy(patch){
+    const me=await TonicaoAuth.currentUser();
+    if(me?.role!=="admin")throw new Error("Só o Dono pode mudar isso.");
+    await F.acad().update({...patch});
+    await saveSettings(patch);
+    try{window.dispatchEvent(new CustomEvent("tonicao:policy-changed"))}catch(e){}
+    return {ok:true};
+  }
+  return {getStatus,saveConfig,testConnection,syncNow,schedule,start,confirmPendingAttendance,uploadAll,watchSession,savePolicy};
 })();
 window.TonicaoCloud=TonicaoCloud;
 window.addEventListener("load",()=>TonicaoCloud.start());
@@ -4703,7 +4732,7 @@ async function applyAuthRole(){
 function authRoleLabel(u){return TonicaoAuth.ROLE_LABEL[u?.role]||"Usuário";}
 
 async function renderAll(){const authUser=await applyAuthRole();if(!authUser)return;await processInviteFromUrl();const settings=await getSettings();if(!(await renderAcademyAccessGate(authUser)))return;document.getElementById("roleSelect").value=settings.role;document.querySelector(".brand h1").textContent=`${settings.academyName||settings.academy||"Tonicão Team"} ${settings.unitName||settings.unit?"• "+(settings.unitName||settings.unit):""}`;
-document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.64`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
+document.getElementById("topSubtitle").textContent=`${authRoleLabel(authUser)} • offline-first • v0.65`;if(settings.role==="professor")await renderProfessorHome();else await renderStudentHome();await renderCheckin();await renderStudents();await renderGraduation();await renderMore(currentMoreMode||"menu");updateGlobalBack();await TonicaoNotifications?.syncInbox?.({showDevice:true});if(settings.role==="professor")dispatchDeviceAlerts(false)}
 document.getElementById("roleSelect").addEventListener("change",()=>{});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 (async()=>{await ensureSeed();await ensureProductionCleanV22();try{const _s=await getSettings();if(!_s.sanitizedV021){await DB.sanitizeAllStores();const s2=await getSettings();s2.sanitizedV021=true;await DB.rawPut("settings",s2)}}catch(e){console.warn("Limpeza v0.23",e)}await ensureDefaultV05Data();await ensurePilotHistoryV08();await ensurePilotTimelineV09();await ensureGraduationTracksV14();await ensureOfficialMaterialsV18();await ensureRoleHierarchyV16();await ensureV027Migrations();if(await renderAuthGate())await renderAll()})();
@@ -6381,6 +6410,7 @@ window.addEventListener("load",()=>setTimeout(async()=>{
   }
   carregar();
   window.addEventListener("tonicao:data-synced",()=>carregar());
+  window.addEventListener("tonicao:policy-changed",()=>carregar().then(()=>{if(ligada)varrer()}));
   window.recarregarMarcaV061=carregar;
 
   function texto(){
@@ -6415,8 +6445,13 @@ window.addEventListener("load",()=>setTimeout(async()=>{
 
   /* Interruptor na tela do Administrador */
   window.alternarMarcaV061=async function(valor){
-    if(!(await guard("manage_branding").catch(()=>true)))return;
-    const s=await getSettings();s.photoWatermark=!!valor;await DB.put("settings",s);
+    /* v0.65: isto agora é política da academia, não ajuste deste celular.
+       Antes ficava só em "settings", que nunca sobe para o servidor: o Dono
+       desligava aqui e o celular da professora continuava com a marca. */
+    const me=await TonicaoAuth.currentUser();
+    if(me?.role!=="admin"){toast("Só o Dono pode mudar isso.");return}
+    try{await TonicaoCloud.savePolicy({photoWatermark:!!valor})}
+    catch(e){const s=await getSettings();s.photoWatermark=!!valor;await DB.put("settings",s)}
     ligada=!!valor;
     if(!ligada){
       document.querySelectorAll(".wm-wrap").forEach(w=>{
@@ -6433,6 +6468,8 @@ window.addEventListener("load",()=>setTimeout(async()=>{
       const r=await baseMore.call(this,mode,...a);
       try{
         if(mode!=="academy")return r;
+        const me=await TonicaoAuth.currentUser();
+        if(me?.role!=="admin")return r;
         const host=document.getElementById("more");
         if(!host||host.querySelector("[data-wm-cfg]"))return r;
         const s=await getSettings();
@@ -6448,6 +6485,157 @@ window.addEventListener("load",()=>setTimeout(async()=>{
           <p class="small muted">Com ela ligada, a foto aparece com o nome de quem está vendo e a data por cima, e segurar o dedo deixa de oferecer "Salvar imagem".</p>
           <div class="notice payment small"><strong>Isto não impede print</strong>
             <div class="small">Nenhum aplicativo aberto pelo navegador consegue bloquear a captura de tela, e quem vê a tela sempre pode fotografar com outro celular. A marca serve para a cópia ficar rastreável e sem graça de repassar.</div></div>`;
+        host.appendChild(box);
+      }catch(e){}
+      return r;
+    };
+  }
+})();
+</script>
+<script>/* ===== student-photo.js ===== */
+/* v0.65 — O aluno troca a própria foto.
+   A ficha do aluno no servidor é um documento só, com a faixa, os pontos e o
+   pagamento dentro. Liberar a escrita dela para o aluno deixaria ele mudar a
+   própria faixa, então a foto saiu para um documento separado, "studentPhotos",
+   que guarda só a imagem. Ali a liberação é segura: não existe nada para
+   adulterar dentro dele.
+   Quem manda é o documento de foto, quando existe; a foto antiga da ficha
+   continua valendo para quem ainda não trocou. O Dono liga e desliga, e o
+   interruptor fica no documento da academia, então vale para todos os
+   celulares, não só para o dele. */
+(()=>{
+  "use strict";
+  const cache=new Map();
+
+  async function recarregar(){
+    try{
+      cache.clear();
+      for(const f of await DB.getAll("studentPhotos"))if(f&&f.photo)cache.set(f.id,f.photo);
+    }catch(e){}
+  }
+  recarregar();
+  for(const ev of ["tonicao:data-synced","tonicao:data-pushed"])window.addEventListener(ev,()=>recarregar());
+  window.recarregarFotosV065=recarregar;
+  window.fotoDoAlunoV065=id=>cache.get(id)||"";
+
+  /* O avatar passa a olhar primeiro o documento de foto */
+  const baseAvatar=window.studentAvatar;
+  if(typeof baseAvatar==="function"){
+    window.studentAvatar=function(s){
+      const nova=s&&cache.get(s.id);
+      return nova?baseAvatar.call(this,{...s,photo:nova}):baseAvatar.call(this,s);
+    };
+  }
+
+  async function liberado(){
+    try{return (await getSettings()).studentPhotoSelf!==false}catch(e){return true}
+  }
+
+  async function gravarFoto(studentId,dataUrl){
+    await DB.put("studentPhotos",{id:studentId,photo:dataUrl,updatedAt:new Date().toISOString()});
+    cache.set(studentId,dataUrl);
+    try{TonicaoCloud.schedule(300)}catch(e){}
+  }
+  window.gravarFotoV065=gravarFoto;
+
+  /* O professor salvando a foto também grava no documento novo, senão a foto
+     antiga do aluno continuaria ganhando dele na tela. */
+  const baseSalvar=window.saveCroppedPhoto;
+  if(typeof baseSalvar==="function"){
+    window.saveCroppedPhoto=async function(...a){
+      const id=cropState?.studentId;
+      const c=document.getElementById("cropCanvas");
+      const img=c&&cropState?.img?c.toDataURL("image/jpeg",.84):"";
+      const r=await baseSalvar.apply(this,a);
+      if(id&&img){try{await gravarFoto(id,img)}catch(e){}}
+      return r;
+    };
+  }
+
+  /* ---------- lado do aluno ---------- */
+  window.minhaFotoV065=async function(){
+    const me=await TonicaoAuth.currentUser();
+    const id=me?.studentId;
+    if(!id){toast("Sua conta ainda não está ligada a uma ficha.");return}
+    if(!(await liberado())){toast("O professor não liberou a troca de foto.");return}
+    cropState={studentId:id,img:null,zoom:1,x:0,y:0};
+    showModal(`<h3>Minha foto</h3>
+      <p class="small muted">Use uma foto do rosto, de kimono se puder. Ela aparece na sua ficha e para o professor.</p>
+      <div class="field"><label>Tirar foto ou escolher da galeria</label>
+        <input id="photoInput" type="file" accept="image/*" capture="user" onchange="loadCropImage(event)"></div>
+      <div id="cropWrap" style="display:none">
+        <canvas id="cropCanvas" width="320" height="320" class="crop-canvas"></canvas>
+        <div class="field"><label>Zoom</label><input type="range" min="1" max="3" step="0.05" value="1" oninput="cropState.zoom=+this.value;renderCrop()"></div>
+        <div class="field"><label>Posição horizontal</label><input type="range" min="-100" max="100" value="0" oninput="cropState.x=+this.value;renderCrop()"></div>
+        <div class="field"><label>Posição vertical</label><input type="range" min="-100" max="100" value="0" oninput="cropState.y=+this.value;renderCrop()"></div>
+        <button class="btn primary full" onclick="salvarMinhaFotoV065()">Salvar minha foto</button>
+      </div>`);
+  };
+  window.salvarMinhaFotoV065=async function(){
+    const me=await TonicaoAuth.currentUser(),id=me?.studentId;
+    if(!id)return;
+    if(!(await liberado())){toast("O professor não liberou a troca de foto.");return}
+    const c=document.getElementById("cropCanvas");
+    if(!c||!cropState.img){toast("Escolha uma foto.");return}
+    try{
+      await gravarFoto(id,c.toDataURL("image/jpeg",.84));
+      closeModal();toast("Foto salva. ✅");
+      await renderAll();
+    }catch(e){toast(e.message||"Não foi possível salvar a foto.")}
+  };
+
+  async function botaoDoAluno(){
+    try{
+      const me=await TonicaoAuth.currentUser();
+      if(me?.role!=="aluno"||!me.studentId)return;
+      if(!(await liberado()))return;
+      const home=document.getElementById("home");
+      if(!home||home.querySelector("[data-minha-foto]"))return;
+      const hero=home.querySelector(".hero");if(!hero)return;
+      const b=document.createElement("button");
+      b.dataset.minhaFoto="1";b.className="btn secondary";b.style.cssText="margin-top:12px";
+      b.textContent=cache.get(me.studentId)?"📷 Trocar minha foto":"📷 Colocar minha foto";
+      b.onclick=()=>minhaFotoV065();
+      hero.appendChild(b);
+    }catch(e){}
+  }
+  const baseHome=window.renderStudentHome;
+  if(typeof baseHome==="function"){
+    window.renderStudentHome=async function(...a){const r=await baseHome.apply(this,a);try{await botaoDoAluno()}catch(e){}return r};
+  }
+
+  /* ---------- interruptor do Dono ---------- */
+  window.alternarFotoAlunoV065=async function(valor){
+    const me=await TonicaoAuth.currentUser();
+    if(me?.role!=="admin"){toast("Só o Dono pode mudar isso.");return}
+    try{
+      await TonicaoCloud.savePolicy({studentPhotoSelf:!!valor});
+      toast(valor?"Aluno pode trocar a própria foto.":"Troca de foto pelo aluno desligada.");
+      await renderAll();
+    }catch(e){toast(e.message||"Não foi possível salvar.")}
+  };
+
+  const baseMore=window.renderMore;
+  if(typeof baseMore==="function"){
+    window.renderMore=async function(mode,...a){
+      const r=await baseMore.call(this,mode,...a);
+      try{
+        if(mode!=="academy")return r;
+        const me=await TonicaoAuth.currentUser();
+        if(me?.role!=="admin")return r;
+        const host=document.getElementById("more");
+        if(!host||host.querySelector("[data-foto-cfg]"))return r;
+        const on=(await getSettings()).studentPhotoSelf!==false;
+        const box=document.createElement("div");
+        box.dataset.fotoCfg="1";box.className="card";
+        box.innerHTML=`<h3>Foto do aluno</h3>
+          <div class="field"><label>O aluno pode trocar a própria foto</label>
+            <select id="cfgFotoAluno" onchange="alternarFotoAlunoV065(this.value==='1')">
+              <option value="1" ${on?"selected":""}>Pode</option>
+              <option value="0" ${on?"":"selected"}>Não pode</option>
+            </select></div>
+          <p class="small muted">Ligado, aparece um botão "Trocar minha foto" na tela inicial do aluno. O professor continua podendo trocar a foto de qualquer um pela ficha.</p>
+          <p class="small muted">O aluno só consegue mexer na própria foto: faixa, graus, pontos e pagamento continuam trancados no servidor.</p>`;
         host.appendChild(box);
       }catch(e){}
       return r;

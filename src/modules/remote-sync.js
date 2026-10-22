@@ -9,7 +9,7 @@ const TonicaoCloud=(()=>{
   const NEVER_PUSH=new Set(["users","auditLog","registrationRequests","settings"]);
   const SHARED=["techniques","gradingPlans","events","academyContent","academyTimeline","academyGallery","academyRules","scoreRules","referenceMaterials","timerPresets","sequenceRules","classSessions","classSchedule"];
   const STUDENT_OWN=["attendance","gradingHistory","gradingAssignments","gradingReminders","pointsLedger","paymentStatus","classBookings"];
-  const PROF_WRITE=new Set(["students","classSessions","attendance","gradingHistory","gradingPlans","gradingAssignments","gradingReminders","pointsLedger","events","techniques","notifications","paymentStatus","timerPresets","sequenceRules","scoreRules","academyRules","academyContent","academyTimeline","academyGallery","referenceMaterials","classSchedule","classBookings"]);
+  const PROF_WRITE=new Set(["students","classSessions","attendance","gradingHistory","gradingPlans","gradingAssignments","gradingReminders","pointsLedger","events","techniques","notifications","paymentStatus","timerPresets","sequenceRules","scoreRules","academyRules","academyContent","academyTimeline","academyGallery","referenceMaterials","classSchedule","classBookings","studentPhotos"]);
   const ADMIN_WRITE=new Set(["academyContent","academyTimeline","academyGallery","referenceMaterials","notifications"]);
   const INDEX_FIELDS=["studentId","status","sessionId","targetStudentId","targetRole","payment","active"];
   const PUBLIC_STUDENT=["id","name","nickname","belt","stripes","points","graduationTrack","photo","active","updatedAt"];
@@ -75,7 +75,7 @@ const TonicaoCloud=(()=>{
     const rejected=[];let pushed=0;
     for(const q of pending){
       const ackId=`${q.id}@${q.queuedAt}`;
-      const allowed=me.role==="professor"?PROF_WRITE.has(q.store):me.role==="admin"?ADMIN_WRITE.has(q.store):["attendance","gradingAssignments","classBookings"].includes(q.store);
+      const allowed=me.role==="professor"?PROF_WRITE.has(q.store):me.role==="admin"?ADMIN_WRITE.has(q.store):["attendance","gradingAssignments","classBookings","studentPhotos"].includes(q.store);
       if(NEVER_PUSH.has(q.store)||!DB.syncableStores.includes(q.store)){await DB.ackChanges([ackId]);continue}
       if(!allowed){await DB.ackChanges([ackId]);await revert(q.store,q.recordId);continue} // volta à versão oficial
       try{
@@ -84,6 +84,15 @@ const TonicaoCloud=(()=>{
             // reserva do aluno: cria/cancela só a própria, enquanto pendente
             if(q.op==="delete")await col("classBookings").doc(q.recordId).set({_deleted:true,...F.meta()},{merge:true});
             else{const v=q.value;await col("classBookings").doc(q.recordId).set({id:q.recordId,scheduleId:v.scheduleId,date:v.date,studentId:v.studentId,status:"pending",createdAt:v.createdAt||new Date().toISOString(),...F.meta()})}
+            await DB.ackChanges([ackId]);pushed++;continue;
+          }
+          if(q.store==="studentPhotos"){
+            /* v0.65: a foto do próprio aluno. O documento guarda SÓ a foto, por isso
+               o servidor pode liberar a escrita sem risco: não há faixa, ponto nem
+               pagamento dentro dele para alguém adulterar. */
+            if(q.recordId!==me.studentId)throw {code:"permission-denied"};
+            if(q.op==="delete")await col("studentPhotos").doc(q.recordId).set({id:q.recordId,_deleted:true,...F.meta()});
+            else await col("studentPhotos").doc(q.recordId).set({id:q.recordId,photo:String(q.value?.photo||""),updatedAt:q.value?.updatedAt||new Date().toISOString(),...F.meta()});
             await DB.ackChanges([ackId]);pushed++;continue;
           }
           if(q.op!=="put")throw {code:"permission-denied"};
@@ -159,6 +168,7 @@ const TonicaoCloud=(()=>{
     if(me.role==="aluno"){
       const sid=me.studentId;
       for(const st of SHARED)await pullQuery(st,col(st),st,cursors,apply);
+      await pullQuery("studentPhotos",col("studentPhotos"),"studentPhotos",cursors,apply);
       await pullQuery("studentsPublic",col("studentsPublic"),"students",cursors,async ch=>{if(ch.recordId!==sid)await apply(ch)});
       if(sid){
         const own=await col("students").doc(sid).get();
@@ -212,6 +222,16 @@ const TonicaoCloud=(()=>{
       const ac=(await F.acad().get()).data()||{};
       const s=await settings();
       if(s.academyAccessStatus!==(ac.accessStatus||"active")||s.academyAccessReason!==(ac.accessReason||""))await saveSettings({academyAccessStatus:ac.accessStatus||"active",academyAccessReason:ac.accessReason||""});
+      /* v0.65: o que o Dono liga aqui precisa chegar no celular de todo mundo.
+         "settings" nunca sobe para o servidor, então estas duas chaves moram no
+         documento da academia e descem a cada sincronização. */
+      {
+        const pf=ac.studentPhotoSelf!==false, wm=ac.photoWatermark!==false;
+        if(s.studentPhotoSelf!==pf||s.photoWatermark!==wm){
+          await saveSettings({studentPhotoSelf:pf,photoWatermark:wm});
+          try{window.dispatchEvent(new CustomEvent("tonicao:policy-changed"))}catch(e){}
+        }
+      }
       if(ac.accessStatus==="blocked"&&me.role!=="admin")return {...me,blocked:true};
     }catch(e){}
     return me;
@@ -292,7 +312,16 @@ const TonicaoCloud=(()=>{
       },err=>console.warn("watchSession",err));
     }catch(e){console.warn("watchSession",e);return null}
   }
-  return {getStatus,saveConfig,testConnection,syncNow,schedule,start,confirmPendingAttendance,uploadAll,watchSession};
+  /* v0.65: só o Dono grava — é o que a regra do documento da academia permite. */
+  async function savePolicy(patch){
+    const me=await TonicaoAuth.currentUser();
+    if(me?.role!=="admin")throw new Error("Só o Dono pode mudar isso.");
+    await F.acad().update({...patch});
+    await saveSettings(patch);
+    try{window.dispatchEvent(new CustomEvent("tonicao:policy-changed"))}catch(e){}
+    return {ok:true};
+  }
+  return {getStatus,saveConfig,testConnection,syncNow,schedule,start,confirmPendingAttendance,uploadAll,watchSession,savePolicy};
 })();
 window.TonicaoCloud=TonicaoCloud;
 window.addEventListener("load",()=>TonicaoCloud.start());

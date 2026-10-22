@@ -25,7 +25,7 @@ function cleanValue(value,key=""){
   }
   return value; // Blob, Date, números etc. ficam como estão
 }
-const DB_VERSION = 14; // v0.28: grade de horários e reservas
+const DB_VERSION = 15; // v0.65: foto que o próprio aluno troca
 
 const STORE_DEFS = [
   ["students","id"], ["classSessions","id"], ["attendance","id"],
@@ -34,13 +34,13 @@ const STORE_DEFS = [
   ["techniques","id"], ["notifications","id"], ["paymentStatus","id"],
   ["documents","id"], ["settings","id"], ["academies","id"], ["devices","id"],
   ["invites","id"], ["syncLog","id"], ["academyContent","id"], ["timerPresets","id"],
-  ["sequenceRules","id"], ["syncQueue","id"], ["syncMeta","id"], ["users","id"], ["authSession","id"], ["auditLog","id"], ["academyTimeline","id"], ["academyGallery","id"], ["reportPresets","id"], ["remoteAuth","id"], ["registrationRequests","id"], ["academyRules","id"], ["scoreRules","id"], ["referenceMaterials","id"], ["classSchedule","id"], ["classBookings","id"]
+  ["sequenceRules","id"], ["syncQueue","id"], ["syncMeta","id"], ["users","id"], ["authSession","id"], ["auditLog","id"], ["academyTimeline","id"], ["academyGallery","id"], ["reportPresets","id"], ["remoteAuth","id"], ["registrationRequests","id"], ["academyRules","id"], ["scoreRules","id"], ["referenceMaterials","id"], ["classSchedule","id"], ["classBookings","id"], ["studentPhotos","id"]
 ];
 
 const SYNCABLE_STORES = new Set([
   "students","classSessions","attendance","gradingHistory","gradingPlans",
   "gradingAssignments","gradingReminders","pointsLedger","events","techniques",
-  "notifications","paymentStatus","academyContent","timerPresets","sequenceRules","users","auditLog","academyTimeline","academyGallery","registrationRequests","academyRules","scoreRules","referenceMaterials","classSchedule","classBookings"
+  "notifications","paymentStatus","academyContent","timerPresets","sequenceRules","users","auditLog","academyTimeline","academyGallery","registrationRequests","academyRules","scoreRules","referenceMaterials","classSchedule","classBookings","studentPhotos"
 ]);
 
 let __dbPromise=null;

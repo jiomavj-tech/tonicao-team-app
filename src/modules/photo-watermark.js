@@ -38,6 +38,7 @@
   }
   carregar();
   window.addEventListener("tonicao:data-synced",()=>carregar());
+  window.addEventListener("tonicao:policy-changed",()=>carregar().then(()=>{if(ligada)varrer()}));
   window.recarregarMarcaV061=carregar;
 
   function texto(){
@@ -72,8 +73,13 @@
 
   /* Interruptor na tela do Administrador */
   window.alternarMarcaV061=async function(valor){
-    if(!(await guard("manage_branding").catch(()=>true)))return;
-    const s=await getSettings();s.photoWatermark=!!valor;await DB.put("settings",s);
+    /* v0.65: isto agora é política da academia, não ajuste deste celular.
+       Antes ficava só em "settings", que nunca sobe para o servidor: o Dono
+       desligava aqui e o celular da professora continuava com a marca. */
+    const me=await TonicaoAuth.currentUser();
+    if(me?.role!=="admin"){toast("Só o Dono pode mudar isso.");return}
+    try{await TonicaoCloud.savePolicy({photoWatermark:!!valor})}
+    catch(e){const s=await getSettings();s.photoWatermark=!!valor;await DB.put("settings",s)}
     ligada=!!valor;
     if(!ligada){
       document.querySelectorAll(".wm-wrap").forEach(w=>{
@@ -90,6 +96,8 @@
       const r=await baseMore.call(this,mode,...a);
       try{
         if(mode!=="academy")return r;
+        const me=await TonicaoAuth.currentUser();
+        if(me?.role!=="admin")return r;
         const host=document.getElementById("more");
         if(!host||host.querySelector("[data-wm-cfg]"))return r;
         const s=await getSettings();

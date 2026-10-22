@@ -189,6 +189,15 @@ service cloud.firestore {
         allow list: if isStaff(a) && notBlocked(a);
         allow write: if isProf(a) && notBlocked(a) && stamped();
       }
+      // v0.65: foto que o próprio aluno troca. O documento guarda SÓ a foto,
+      // por isso liberar a escrita para o dono da ficha é seguro: não existe
+      // faixa, ponto nem pagamento aqui dentro para alguém adulterar.
+      match /studentPhotos/{id} {
+        allow read: if isMember(a) && notBlocked(a);
+        allow write: if notBlocked(a) && stamped()
+          && (isProf(a) || ownOrDependent(a, id))
+          && shortStr(request.resource.data.get('photo',''), 400000);
+      }
       match /studentsPublic/{id} {
         allow read: if isMember(a) && notBlocked(a);
         allow write: if isProf(a) && notBlocked(a) && stamped();
